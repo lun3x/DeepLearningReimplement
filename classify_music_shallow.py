@@ -23,7 +23,8 @@ import tensorflow as tf
 
 import pickle
 
-from utils import GZTan
+# from utils import GZTan
+from gztan_utils import GZTan2
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -37,7 +38,7 @@ tf.app.flags.DEFINE_integer('save-model', 1000,
                             'Number of steps between model saves (default: %(default)d)')
 
 # Optimisation hyperparameters
-tf.app.flags.DEFINE_integer('batch-size', 10, 'Number of examples per mini-batch (default: %(default)d)')
+tf.app.flags.DEFINE_integer('batch-size', 100, 'Number of examples per mini-batch (default: %(default)d)')
 tf.app.flags.DEFINE_float('learning-rate', 1e-3, 'Learning rate (default: %(default)d)')
 tf.app.flags.DEFINE_integer('img-width', 80, 'Image width (default: %(default)d)')
 tf.app.flags.DEFINE_integer('img-height', 80, 'Image height (default: %(default)d)')
@@ -54,7 +55,7 @@ run_log_dir = os.path.join(FLAGS.log_dir,
 # we will generate weights from the uniform distribution
 xavier_initializer = tf.contrib.layers.xavier_initializer(uniform=True)
 
-def deepnn(x, test_flag):
+def deepnn(x, train_flag):
     """deepnn builds the graph for a deep net for classifying CIFAR10 images.
 
   Args:
@@ -72,16 +73,7 @@ def deepnn(x, test_flag):
     # 4 for RGBA, etc.
 
     #-1 is used here to infer the shape. We might not know how many N_examples are passed in as x
-    x_image = tf.reshape(x, [-1, FLAGS.img_width, FLAGS.img_height])
-    #delta = tf.random_uniform([], minval=0, maxval=0.9, dtype=tf.float32, seed=None, name=None)
-    # x_image = tf.cond(tf.equal(test_flag[0], 0), lambda: tf.map_fn(lambda img: tf.image.random_flip_left_right(img), x_image), lambda: x_image)
-    # x_image = tf.map_fn(melspectrogram, x_image)
-    #scale = tf.random_uniform([], minval=0.5, maxval=1.5, dtype=tf.float32, seed=None, name=None)
-    #new_width = tf.cast(FLAGS.img_width * scale, tf.int32)
-    #new_height = tf.cast(FLAGS.img_height * scale, tf.int32)
-    #augmented_image = tf.map_fn(lambda img: tf.image.resize_image_with_crop_or_pad(img, new_height, new_width), x_image)
-
-    # x_spectrogram = melspectrogram(x_image)
+    x_image = tf.reshape(x, [-1, FLAGS.img_width, FLAGS.img_height, 1])
 
     img_summary = tf.summary.image('Input_images', x_image)
 
@@ -98,14 +90,14 @@ def deepnn(x, test_flag):
         )
 
         # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
-        conv_spec_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_spec_1, name='conv_spec_1_bn', training=(not test_flag[0])))
+        conv_spec_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_spec_1, name='conv_spec_1_bn', training=train_flag[0]))
 
         # Pooling layer - downsamples by 2X.
         pool_spec_1 = tf.layers.max_pooling2d(
             inputs=conv_spec_1_bn,
             pool_size=[1, 20],
-            strides=[1, 1, 20],
-            name='pool1'
+            strides=[1, 20],
+            name='pool_spec_1'
         )
 
         # MAYBE RESHAPE???
@@ -123,34 +115,35 @@ def deepnn(x, test_flag):
         )
 
         # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
-        conv_temp_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_temp_1, name='conv_temp_1_bn', training=(not test_flag[0])))
+        conv_temp_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_temp_1, name='conv_temp_1_bn', training=train_flag[0]))
 
         # Pooling layer - downsamples by 2X.
         pool_temp_1 = tf.layers.max_pooling2d(
             inputs=conv_temp_1_bn,
             pool_size=[20, 1],
-            strides=[1, 20, 1],
-            name='pool1'
+            strides=[20, 1],
+            name='pool_temp_1'
         )
 
         # MAYBE RESHAPE???
         reshaped_pool_temp_1 = tf.reshape(pool_temp_1, [-1, 5120])
 
     with tf.variable_scope('Merge'):
-        merged_streams = tf.concat([reshaped_pool_spec_1, reshaped_pool_temp_1], 1) # maybe 0?
+        merged_streams = tf.concat([reshaped_pool_spec_1, reshaped_pool_temp_1], 1, name='merged_streams') # maybe 0?
+
+        merged_dropout = tf.layers.dropout(
+            merged_streams,
+            rate=0.1,
+            training=train_flag[0], # not training
+            name='merged_dropout'
+        )
 
     with tf.variable_scope('FC_1'):
         fc1 = tf.layers.dense(
-            inputs=merged_streams,
+            inputs=merged_dropout,
             units=200,
             kernel_initializer=xavier_initializer,
             name='fc1'
-        )
-
-        fc1_dropout = tf.layers.dropout(
-            fc1,
-            training=(not test_flag[0]), # not training
-            name='fc1_dropout'
         )
 
         #Fully connected network
@@ -165,7 +158,7 @@ def deepnn(x, test_flag):
 
     with tf.variable_scope('FC_3'):
         fc3 = tf.layers.dense(
-            inputs=fc1_dropout,
+            inputs=fc1,
             units=FLAGS.num_classes,
             kernel_initializer=xavier_initializer,
             name='fc3'
@@ -177,17 +170,17 @@ def main(_):
     tf.reset_default_graph()
 
     # Import data
-    gztan = GZTan(FLAGS.batch_size)
+    gztan = GZTan2(FLAGS.batch_size)
 
     with tf.variable_scope('inputs'):
         # Create the model
-        x = tf.placeholder(tf.float32, [None, FLAGS.img_width * FLAGS.img_height])
+        x = tf.placeholder(tf.float32, [None, 80, 80, 1])
         # Define loss and optimizer
         y_ = tf.placeholder(tf.float32, [None, FLAGS.num_classes])
-        test_flag = tf.placeholder(tf.uint8, [1])
+        train_flag = tf.placeholder(tf.bool, [1])
 
     # Build the graph for the deep net
-    y_conv, img_summary = deepnn(x, test_flag)
+    y_conv, img_summary = deepnn(x, train_flag)
 
     # Define your loss function - softmax_cross_entropy
     with tf.variable_scope("x_entropy"):
@@ -224,17 +217,17 @@ def main(_):
             # Training: Backpropagation using train set
             # (trainImages, trainLabels) = cifar.getTrainBatch()
             # (testImages, testLabels) = cifar.getTestBatch()
-            (train_samples, train_labels) = gztan.get_train_batch()
-            (test_samples, test_labels) = gztan.get_test_batch()
+            (train_samples, train_labels) = gztan.getTrainBatch()
+            (test_samples, test_labels) = gztan.getTestBatch()
 
-            _, summary_str = sess.run([optimizer, training_summary], feed_dict={x: train_samples, test_flag:[0], y_: train_labels})
+            _, summary_str = sess.run([optimizer, training_summary], feed_dict={x: train_samples, train_flag:[True], y_: train_labels})
 
             if step % (FLAGS.log_frequency + 1) == 0:
                 summary_writer.add_summary(summary_str, step)
 
             # Validation: Monitoring accuracy using validation set
             if step % FLAGS.log_frequency == 0:
-                validation_accuracy, summary_str = sess.run([accuracy, validation_summary], feed_dict={x: test_samples, test_flag:[1], y_: test_labels})
+                validation_accuracy, summary_str = sess.run([accuracy, validation_summary], feed_dict={x: test_samples, train_flag:[False], y_: test_labels})
                 print('step %d, accuracy on validation batch: %g' % (step, validation_accuracy))
                 summary_writer_validation.add_summary(summary_str, step)
 
@@ -252,9 +245,9 @@ def main(_):
         batch_count = 0
 
         # don't loop back when we reach the end of the test set
-        while evaluated_images != len(gztan.test_samples):
-            (test_samples, test_labels) = gztan.get_test_batch()
-            test_accuracy_temp, _ = sess.run([accuracy, test_summary], feed_dict={x: test_samples, test_flag:[1], y_: test_labels})
+        while evaluated_images != gztan.nTestSamples:
+            (test_samples, test_labels) = gztan.getTestBatch()
+            test_accuracy_temp, _ = sess.run([accuracy, test_summary], feed_dict={x: test_samples, train_flag:[False], y_: test_labels})
 
             batch_count = batch_count + 1
             test_accuracy = test_accuracy + test_accuracy_temp
