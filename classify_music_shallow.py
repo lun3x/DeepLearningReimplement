@@ -23,11 +23,7 @@ import tensorflow as tf
 
 import pickle
 
-from utils import melspectrogram
-
-with open('music_genres_dataset.pkl', 'rb') as f:
-    train_set = pickle.load(f)
-    test_set = pickle.load(f)
+from utils import GZTan
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -41,7 +37,7 @@ tf.app.flags.DEFINE_integer('save-model', 1000,
                             'Number of steps between model saves (default: %(default)d)')
 
 # Optimisation hyperparameters
-tf.app.flags.DEFINE_integer('batch-size', 256, 'Number of examples per mini-batch (default: %(default)d)')
+tf.app.flags.DEFINE_integer('batch-size', 10, 'Number of examples per mini-batch (default: %(default)d)')
 tf.app.flags.DEFINE_float('learning-rate', 1e-3, 'Learning rate (default: %(default)d)')
 tf.app.flags.DEFINE_integer('img-width', 80, 'Image width (default: %(default)d)')
 tf.app.flags.DEFINE_integer('img-height', 80, 'Image height (default: %(default)d)')
@@ -79,20 +75,20 @@ def deepnn(x, test_flag):
     x_image = tf.reshape(x, [-1, FLAGS.img_width, FLAGS.img_height])
     #delta = tf.random_uniform([], minval=0, maxval=0.9, dtype=tf.float32, seed=None, name=None)
     # x_image = tf.cond(tf.equal(test_flag[0], 0), lambda: tf.map_fn(lambda img: tf.image.random_flip_left_right(img), x_image), lambda: x_image)
-    # x_image = tf.cond(tf.equal(test_flag[0], 0), lambda: tf.map_fn(lambda img: tf.image.random_brightness(img, 0.1), x_image), lambda: x_image)
+    # x_image = tf.map_fn(melspectrogram, x_image)
     #scale = tf.random_uniform([], minval=0.5, maxval=1.5, dtype=tf.float32, seed=None, name=None)
     #new_width = tf.cast(FLAGS.img_width * scale, tf.int32)
     #new_height = tf.cast(FLAGS.img_height * scale, tf.int32)
     #augmented_image = tf.map_fn(lambda img: tf.image.resize_image_with_crop_or_pad(img, new_height, new_width), x_image)
 
-    x_spectrogram = melspectrogram(x_image)
+    # x_spectrogram = melspectrogram(x_image)
 
     img_summary = tf.summary.image('Input_images', x_image)
 
     # First convolutional layer - maps one image to 16 feature maps.
     with tf.variable_scope('Conv_Spectral_1'):
         conv_spec_1 = tf.layers.conv2d(
-            inputs=x_spectrogram,
+            inputs=x_image,
             filters=16,
             kernel_size=[10, 23],
             padding='same',
@@ -102,7 +98,7 @@ def deepnn(x, test_flag):
         )
 
         # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
-        conv_spec_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_spec_1))
+        conv_spec_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_spec_1, name='conv_spec_1_bn', training=(not test_flag[0])))
 
         # Pooling layer - downsamples by 2X.
         pool_spec_1 = tf.layers.max_pooling2d(
@@ -117,7 +113,7 @@ def deepnn(x, test_flag):
 
     with tf.variable_scope('Conv_Temporal_1'):
         conv_temp_1 = tf.layers.conv2d(
-            inputs=x_spectrogram,
+            inputs=x_image,
             filters=16,
             kernel_size=[21, 20],
             padding='same',
@@ -127,7 +123,7 @@ def deepnn(x, test_flag):
         )
 
         # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
-        conv_temp_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_temp_1))
+        conv_temp_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_temp_1, name='conv_temp_1_bn', training=(not test_flag[0])))
 
         # Pooling layer - downsamples by 2X.
         pool_temp_1 = tf.layers.max_pooling2d(
@@ -153,7 +149,7 @@ def deepnn(x, test_flag):
 
         fc1_dropout = tf.layers.dropout(
             fc1,
-            training=!test_flag[0], # not training
+            training=(not test_flag[0]), # not training
             name='fc1_dropout'
         )
 
@@ -181,7 +177,7 @@ def main(_):
     tf.reset_default_graph()
 
     # Import data
-    cifar = cf.cifar10(batchSize=FLAGS.batch_size, downloadDir=FLAGS.data_dir)
+    gztan = GZTan(FLAGS.batch_size)
 
     with tf.variable_scope('inputs'):
         # Create the model
@@ -217,9 +213,7 @@ def main(_):
     # saver for checkpoints
     saver = tf.train.Saver(tf.global_variables(), max_to_keep=1)
 
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.333)
-
-    with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
+    with tf.Session() as sess:
         summary_writer = tf.summary.FileWriter(run_log_dir + '_train', sess.graph)
         summary_writer_validation = tf.summary.FileWriter(run_log_dir + '_validate', sess.graph, flush_secs=5)
 
@@ -228,17 +222,19 @@ def main(_):
         # Training and validation
         for step in range(FLAGS.max_steps):
             # Training: Backpropagation using train set
-            (trainImages, trainLabels) = cifar.getTrainBatch()
-            (testImages, testLabels) = cifar.getTestBatch()
+            # (trainImages, trainLabels) = cifar.getTrainBatch()
+            # (testImages, testLabels) = cifar.getTestBatch()
+            (train_samples, train_labels) = gztan.get_train_batch()
+            (test_samples, test_labels) = gztan.get_test_batch()
 
-            _, summary_str = sess.run([optimizer, training_summary], feed_dict={x: trainImages, test_flag:[0], y_: trainLabels})
+            _, summary_str = sess.run([optimizer, training_summary], feed_dict={x: train_samples, test_flag:[0], y_: train_labels})
 
             if step % (FLAGS.log_frequency + 1) == 0:
                 summary_writer.add_summary(summary_str, step)
 
             # Validation: Monitoring accuracy using validation set
             if step % FLAGS.log_frequency == 0:
-                validation_accuracy, summary_str = sess.run([accuracy, validation_summary], feed_dict={x: testImages, test_flag:[1], y_: testLabels})
+                validation_accuracy, summary_str = sess.run([accuracy, validation_summary], feed_dict={x: test_samples, test_flag:[1], y_: test_labels})
                 print('step %d, accuracy on validation batch: %g' % (step, validation_accuracy))
                 summary_writer_validation.add_summary(summary_str, step)
 
@@ -250,19 +246,19 @@ def main(_):
         # Testing
 
         # resetting the internal batch indexes
-        cifar.reset()
+        # cifar.reset()
         evaluated_images = 0
         test_accuracy = 0
         batch_count = 0
 
         # don't loop back when we reach the end of the test set
-        while evaluated_images != cifar.nTestSamples:
-            (testImages, testLabels) = cifar.getTestBatch(allowSmallerBatches=True)
-            test_accuracy_temp, _ = sess.run([accuracy, test_summary], feed_dict={x: testImages, test_flag:[1], y_: testLabels})
+        while evaluated_images != len(gztan.test_samples):
+            (test_samples, test_labels) = gztan.get_test_batch()
+            test_accuracy_temp, _ = sess.run([accuracy, test_summary], feed_dict={x: test_samples, test_flag:[1], y_: test_labels})
 
             batch_count = batch_count + 1
             test_accuracy = test_accuracy + test_accuracy_temp
-            evaluated_images = evaluated_images + testLabels.shape[0]
+            evaluated_images = evaluated_images + test_labels.shape[0]
 
         test_accuracy = test_accuracy / batch_count
         print('test set: accuracy on test set: %0.3f' % test_accuracy)
