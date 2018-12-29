@@ -43,10 +43,12 @@ class GZTan2:
     trainLabels = np.array([])
     testData = np.array([])
     testLabels = np.array([])
+    testTracks = np.array([])
     currentIndexTrain = 0
     currentIndexTest = 0
     nTrainSamples = 0
     nTestSamples = 0
+    nTracks = 0
 
     pTrain = []
     pTest = []
@@ -84,9 +86,11 @@ class GZTan2:
 
         self.testData = np.array(test_set['data'])
         self.testLabels = oneHotVector(test_set['labels'], 10)
+        self.testTracks = np.array(test_set['track_id'])
 
         self.nTrainSamples = len(self.trainLabels)
         self.nTestSamples = len(self.testLabels)
+        self.nTracks = len(np.lib.arraysetops.unique(self.testTracks, return_index=True))
 
         self.pTrain = np.random.permutation(self.nTrainSamples)
         self.pTest = np.random.permutation(self.nTestSamples)
@@ -135,6 +139,13 @@ class GZTan2:
                 break
 
         return (D, L)
+
+    def getTrackSamples(self, track_id):
+        print('test data shape: {}'.format(self.testData.shape))
+        trackIndices = np.where(self.testTracks == track_id)[0]
+        D = self.testData[trackIndices]
+        D = np.apply_along_axis(melspectrogram, axis=1, arr=D)
+        return D
 
     def reset(self):
         self.currentIndexTrain = 0

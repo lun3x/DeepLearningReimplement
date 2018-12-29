@@ -90,11 +90,11 @@ def deepnn(x, train_flag):
         )
 
         # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
-        conv_spec_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_spec_1, name='conv_spec_1_bn', training=train_flag[0]))
+        # conv_spec_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_spec_1, name='conv_spec_1_bn', training=train_flag[0]))
 
         # Pooling layer - downsamples by 2X.
         pool_spec_1 = tf.layers.max_pooling2d(
-            inputs=conv_spec_1_bn,
+            inputs=conv_spec_1,
             pool_size=[1, 20],
             strides=[1, 20],
             name='pool_spec_1'
@@ -115,11 +115,11 @@ def deepnn(x, train_flag):
         )
 
         # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
-        conv_temp_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_temp_1, name='conv_temp_1_bn', training=train_flag[0]))
+        # conv_temp_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_temp_1, name='conv_temp_1_bn', training=train_flag[0]))
 
         # Pooling layer - downsamples by 2X.
         pool_temp_1 = tf.layers.max_pooling2d(
-            inputs=conv_temp_1_bn,
+            inputs=conv_temp_1,
             pool_size=[20, 1],
             strides=[20, 1],
             name='pool_temp_1'
@@ -165,6 +165,14 @@ def deepnn(x, train_flag):
         )
         return fc3, img_summary
 
+def raw_acc(y_, y_conv):
+    raw_correct_prediction = tf.equal(tf.argmax(y_, 1), tf.argmax(y_conv, 1))
+    return tf.reduce_mean(tf.cast(raw_correct_prediction, tf.float32))
+
+def max_prob_acc(y_, y_conv):
+    prediction = tf.argmax(tf.reduce_sum(y_conv, 0), 1)
+    correct_prediction = tf.equal(tf.argmax(y_, 1), tf.argmax(prediction, 1))
+    return tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
 def main(_):
     tf.reset_default_graph()
@@ -185,23 +193,30 @@ def main(_):
     # Define your loss function - softmax_cross_entropy
     with tf.variable_scope("x_entropy"):
         cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv))
+        l1_regularizer = tf.contrib.layers.l1_regularizer(scale=0.0001)
+        weights = tf.trainable_variables()
+        regularization_penalty = tf.contrib.layers.apply_regularization(l1_regularizer, weights)
+        regularized_cross_entropy = cross_entropy + regularization_penalty
 
     # Define your AdamOptimiser, using FLAGS.learning_rate to minimixe the loss function
-    optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(cross_entropy)
+    optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(regularized_cross_entropy)
     # batch_number = tf.Variable(0, trainable=False)
     # our_learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, batch_number, 1000, 0.8)
     # optimizer = tf.train.AdamOptimizer(our_learning_rate).minimize(cross_entropy, global_step=batch_number)
     # calculate the prediction and the accuracy
-    correct_prediction = tf.equal(tf.argmax(y_, 1), tf.argmax(y_conv, 1))
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+    
+    raw_accuracy = raw_acc(y_, y_conv)
+    max_prob_accuracy = max_prob_acc(y_, y_conv)
+    max_prob_prediction = tf.argmax(tf.reduce_sum(y_conv, 0), 1)
 
     loss_summary = tf.summary.scalar('Loss', cross_entropy)
-    acc_summary = tf.summary.scalar('Accuracy', accuracy)
+    raw_acc_summary = tf.summary.scalar('Raw Accuracy', raw_accuracy)
+    max_prob_acc_summary = tf.summary.scalar('MaxProb Accuracy', max_prob_accuracy)
 
     # summaries for TensorBoard visualisation
-    validation_summary = tf.summary.merge([img_summary, acc_summary])
+    validation_summary = tf.summary.merge([img_summary, raw_acc_summary])
     training_summary = tf.summary.merge([img_summary, loss_summary])
-    test_summary = tf.summary.merge([img_summary, acc_summary])
+    test_summary = tf.summary.merge([img_summary, raw_acc_summary])
 
     # saver for checkpoints
     saver = tf.train.Saver(tf.global_variables(), max_to_keep=1)
@@ -227,7 +242,7 @@ def main(_):
 
             # Validation: Monitoring accuracy using validation set
             if step % FLAGS.log_frequency == 0:
-                validation_accuracy, summary_str = sess.run([accuracy, validation_summary], feed_dict={x: test_samples, train_flag:[False], y_: test_labels})
+                validation_accuracy, summary_str = sess.run([raw_accuracy, validation_summary], feed_dict={x: test_samples, train_flag:[False], y_: test_labels})
                 print('step %d, accuracy on validation batch: %g' % (step, validation_accuracy))
                 summary_writer_validation.add_summary(summary_str, step)
 
@@ -239,24 +254,17 @@ def main(_):
         # Testing
 
         # resetting the internal batch indexes
-        # cifar.reset()
-        evaluated_images = 0
+        gztan.reset()
         test_accuracy = 0
-        batch_count = 0
+        correct_predictions = []
 
-        # don't loop back when we reach the end of the test set
-        while evaluated_images != gztan.nTestSamples:
-            (test_samples, test_labels) = gztan.getTestBatch()
-            test_accuracy_temp, _ = sess.run([accuracy, test_summary], feed_dict={x: test_samples, train_flag:[False], y_: test_labels})
+        for track_id in range(gztan.nTracks):
+            (track_samples, track_labels) = gztan.getTrackSamples(track_id)
+            test_prediction = sess.run(max_prob_prediction, feed_dict={x: track_samples})
+            correct_predictions.append(1 if test_prediction == track_labels[0] else 0)
 
-            batch_count = batch_count + 1
-            test_accuracy = test_accuracy + test_accuracy_temp
-            evaluated_images = evaluated_images + test_labels.shape[0]
-
-        test_accuracy = test_accuracy / batch_count
+        test_accuracy = sum(correct_predictions) / len(correct_predictions)
         print('test set: accuracy on test set: %0.3f' % test_accuracy)
-
-
 
 if __name__ == '__main__':
     tf.app.run(main=main)
