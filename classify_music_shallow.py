@@ -30,7 +30,7 @@ FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string('data-dir', os.getcwd() + '/dataset/',
                             'Directory where the dataset will be stored and checkpoint. (default: %(default)s)')
-tf.app.flags.DEFINE_integer('max-steps', 10000,
+tf.app.flags.DEFINE_integer('max-steps', 100,
                             'Number of mini-batches to train on. (default: %(default)d)')
 tf.app.flags.DEFINE_integer('log-frequency', 10,
                             'Number of steps between logging results to the console and saving summaries (default: %(default)d)')
@@ -38,8 +38,8 @@ tf.app.flags.DEFINE_integer('save-model', 1000,
                             'Number of steps between model saves (default: %(default)d)')
 
 # Optimisation hyperparameters
-tf.app.flags.DEFINE_integer('batch-size', 100, 'Number of examples per mini-batch (default: %(default)d)')
-tf.app.flags.DEFINE_float('learning-rate', 1e-3, 'Learning rate (default: %(default)d)')
+tf.app.flags.DEFINE_integer('batch-size', 128, 'Number of examples per mini-batch (default: %(default)d)')
+tf.app.flags.DEFINE_float('learning-rate', 5e-5, 'Learning rate (default: %(default)d)')
 tf.app.flags.DEFINE_integer('img-width', 80, 'Image width (default: %(default)d)')
 tf.app.flags.DEFINE_integer('img-height', 80, 'Image height (default: %(default)d)')
 tf.app.flags.DEFINE_integer('num-classes', 10, 'Number of classes (default: %(default)d)')
@@ -187,10 +187,10 @@ def main(_):
         cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv))
 
     # Define your AdamOptimiser, using FLAGS.learning_rate to minimixe the loss function
-    # optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(cross_entropy)
-    batch_number = tf.Variable(0, trainable=False)
-    our_learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, batch_number, 1000, 0.8)
-    optimizer = tf.train.AdamOptimizer(our_learning_rate).minimize(cross_entropy, global_step=batch_number)
+    optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(cross_entropy)
+    # batch_number = tf.Variable(0, trainable=False)
+    # our_learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, batch_number, 1000, 0.8)
+    # optimizer = tf.train.AdamOptimizer(our_learning_rate).minimize(cross_entropy, global_step=batch_number)
     # calculate the prediction and the accuracy
     correct_prediction = tf.equal(tf.argmax(y_, 1), tf.argmax(y_conv, 1))
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
