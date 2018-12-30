@@ -145,7 +145,11 @@ class GZTan2:
         trackIndices = np.where(self.testTracks == track_id)[0]
         D = self.testData[trackIndices]
         D = np.apply_along_axis(melspectrogram, axis=1, arr=D)
-        return D
+        label = self.testLabels[trackIndices[0]]
+        return D, label
+
+    def testPrint(self):
+        print('test track 0: {}'.format(self.testTracks[1000:1030]))
 
     def reset(self):
         self.currentIndexTrain = 0

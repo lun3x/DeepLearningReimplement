@@ -91,12 +91,13 @@ def deepnn(x, train_flag):
 
         # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
         # conv_spec_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_spec_1, name='conv_spec_1_bn', training=train_flag[0]))
+        h_conv_spec_1 = tf.nn.relu(conv_spec_1, name='conv_spec_1_relu')
 
         # Pooling layer - downsamples by 2X.
         pool_spec_1 = tf.layers.max_pooling2d(
-            inputs=conv_spec_1,
-            pool_size=[1, 20],
-            strides=[1, 20],
+            inputs=h_conv_spec_1,
+            pool_size=[20, 1],
+            strides=[20, 1],
             name='pool_spec_1'
         )
 
@@ -116,12 +117,13 @@ def deepnn(x, train_flag):
 
         # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
         # conv_temp_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_temp_1, name='conv_temp_1_bn', training=train_flag[0]))
+        h_conv_temp_1 = tf.nn.relu(conv_temp_1, name='conv_temp_1_relu')
 
         # Pooling layer - downsamples by 2X.
         pool_temp_1 = tf.layers.max_pooling2d(
-            inputs=conv_temp_1,
-            pool_size=[20, 1],
-            strides=[20, 1],
+            inputs=h_conv_temp_1,
+            pool_size=[1, 20],
+            strides=[1, 20],
             name='pool_temp_1'
         )
 
@@ -149,7 +151,7 @@ def deepnn(x, train_flag):
         #Fully connected network
         # W_fc1 = weight_variable([4096, 1024])
         # b_fc1 = bias_variable([1024])
-        # h_fc1 = tf.nn.relu(tf.matmul(reshapedh_pool2, W_fc1) + b_fc1)
+        # h_fc1 = tf.nn.relu(fc1, name='fc1_relu')
 
     # with tf.variable_scope('FC_2'):
     #     W_fc2 = weight_variable([1024, 1024])
@@ -169,10 +171,8 @@ def raw_acc(y_, y_conv):
     raw_correct_prediction = tf.equal(tf.argmax(y_, 1), tf.argmax(y_conv, 1))
     return tf.reduce_mean(tf.cast(raw_correct_prediction, tf.float32))
 
-def max_prob_acc(y_, y_conv):
-    prediction = tf.argmax(tf.reduce_sum(y_conv, 0), 1)
-    correct_prediction = tf.equal(tf.argmax(y_, 1), tf.argmax(prediction, 1))
-    return tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+def max_prob(y_conv, label):
+    max_prob_prediction_correct = tf.equal(tf.argmax(tf.reduce_sum(y_conv, 0), 0), tf.argmax(label))
 
 def main(_):
     tf.reset_default_graph()
@@ -186,6 +186,7 @@ def main(_):
         # Define loss and optimizer
         y_ = tf.placeholder(tf.float32, [None, FLAGS.num_classes])
         train_flag = tf.placeholder(tf.bool, [1])
+        label = tf.placeholder(tf.int32, [FLAGS.num_classes])
 
     # Build the graph for the deep net
     y_conv, img_summary = deepnn(x, train_flag)
@@ -206,12 +207,12 @@ def main(_):
     # calculate the prediction and the accuracy
     
     raw_accuracy = raw_acc(y_, y_conv)
-    max_prob_accuracy = max_prob_acc(y_, y_conv)
-    max_prob_prediction = tf.argmax(tf.reduce_sum(y_conv, 0), 1)
+    # max_prob_prediction = tf.argmax(tf.reduce_sum(y_conv, 0), 0)
+    maj_vote_prediction_correct = tf.cast(tf.equal(tf.argmax(tf.count_nonzero(y_conv, 0), 0), tf.argmax(label)), tf.int32)
+    max_prob_prediction_correct = tf.cast(tf.equal(tf.argmax(tf.reduce_sum(y_conv, 0), 0),    tf.argmax(label)), tf.int32)
 
     loss_summary = tf.summary.scalar('Loss', cross_entropy)
     raw_acc_summary = tf.summary.scalar('Raw Accuracy', raw_accuracy)
-    max_prob_acc_summary = tf.summary.scalar('MaxProb Accuracy', max_prob_accuracy)
 
     # summaries for TensorBoard visualisation
     validation_summary = tf.summary.merge([img_summary, raw_acc_summary])
@@ -235,14 +236,14 @@ def main(_):
             (train_samples, train_labels) = gztan.getTrainBatch()
             (test_samples, test_labels) = gztan.getTestBatch()
 
-            _, summary_str = sess.run([optimizer, training_summary], feed_dict={x: train_samples, train_flag:[True], y_: train_labels})
+            _, summary_str = sess.run([optimizer, training_summary], feed_dict={x: train_samples, train_flag: [True], y_: train_labels})
 
             if step % (FLAGS.log_frequency + 1) == 0:
                 summary_writer.add_summary(summary_str, step)
 
             # Validation: Monitoring accuracy using validation set
             if step % FLAGS.log_frequency == 0:
-                validation_accuracy, summary_str = sess.run([raw_accuracy, validation_summary], feed_dict={x: test_samples, train_flag:[False], y_: test_labels})
+                validation_accuracy, summary_str = sess.run([raw_accuracy, validation_summary], feed_dict={x: test_samples, train_flag: [False], y_: test_labels})
                 print('step %d, accuracy on validation batch: %g' % (step, validation_accuracy))
                 summary_writer_validation.add_summary(summary_str, step)
 
@@ -255,15 +256,15 @@ def main(_):
 
         # resetting the internal batch indexes
         gztan.reset()
-        test_accuracy = 0
-        correct_predictions = []
+        predictions_correct = []
 
         for track_id in range(gztan.nTracks):
-            (track_samples, track_labels) = gztan.getTrackSamples(track_id)
-            test_prediction = sess.run(max_prob_prediction, feed_dict={x: track_samples})
-            correct_predictions.append(1 if test_prediction == track_labels[0] else 0)
+            (track_samples, track_label) = gztan.getTrackSamples(track_id)
+            test_prediction_correct = sess.run(max_prob_prediction_correct, feed_dict={x: track_samples, train_flag: [False], label: track_label})
+            print('test_prediction_correct: {}'.format(test_prediction_correct))
+            predictions_correct.append(test_prediction_correct)
 
-        test_accuracy = sum(correct_predictions) / len(correct_predictions)
+        test_accuracy = sum(predictions_correct)
         print('test set: accuracy on test set: %0.3f' % test_accuracy)
 
 if __name__ == '__main__':
