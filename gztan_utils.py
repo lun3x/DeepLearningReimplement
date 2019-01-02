@@ -21,40 +21,29 @@ def melspectrogram(audio):
     mel_spec = np.dot(mel_basis, np.abs(spec))
     return np.log(mel_spec + 1e-6).reshape([80, 80, 1])
 
-def unpickle(file):
-    with open(file, 'rb') as fo:
-        return pickle.load(fo)
-
-
 def oneHotVector(classIdx, numClasses):
     v = np.zeros((len(classIdx), numClasses), dtype=np.int)
     v[np.arange(0, len(v)), classIdx] = 1
     return v
-
 
 class GZTan2:
     IMG_WIDTH = 80
     IMG_HEIGHT = 80
     CLASS_COUNT = 10
 
-    dataPath = ''
-    batchSize = 128
+    numBatches = 50
+    batchSize = 0
     trainData = np.array([])
     trainLabels = np.array([])
     testData = np.array([])
     testLabels = np.array([])
     testTracks = np.array([])
-    currentIndexTrain = 0
-    currentIndexTest = 0
     nTrainSamples = 0
     nTestSamples = 0
     nTracks = 0
 
-    pTrain = []
-    pTest = []
-
-    def __init__(self, batchSize=128):
-        self.batchSize = batchSize
+    def __init__(self, numBatches=50):
+        self.numBatches = numBatches
         self.loadGZTan()
 
     def preprocess(self):
@@ -90,66 +79,46 @@ class GZTan2:
 
         self.nTrainSamples = len(self.trainLabels)
         self.nTestSamples = len(self.testLabels)
-        self.nTracks = len(np.lib.arraysetops.unique(self.testTracks, return_index=True))
+        self.nTracks = len(np.lib.arraysetops.unique(self.testTracks))
 
-        self.pTrain = np.random.permutation(self.nTrainSamples)
-        self.pTest = np.random.permutation(self.nTestSamples)
+        self.trainBatchSize = self.nTrainSamples // self.numBatches
+        self.testBatchSize = self.nTestSamples // self.numBatches
 
-    def getTrainBatch(self, allowSmallerBatches=False):
-        return self._getBatch('train', allowSmallerBatches)
+    def getTrainBatch(self, batchNum):
+        return self._getBatch2('train', batchNum)
 
-    def getTestBatch(self, allowSmallerBatches=False):
-        return self._getBatch('test', allowSmallerBatches)
+    def getTestBatch(self, batchNum):
+        return self._getBatch2('test', batchNum)
 
-    def _getBatch(self, dataSet, allowSmallerBatches=False):
-        D = np.array([])
-        L = np.array([])
-
+    def _getBatch2(self, dataSet, batchNum):
         if dataSet == 'train':
-            train = True
-            test = False
+            start_idx = batchNum * self.trainBatchSize
+            end_idx = (batchNum + 1) * self.trainBatchSize
+            if batchNum == self.numBatches - 1:
+                end_idx = self.nTrainSamples - 1
+            r = range(start_idx, end_idx)
+
+            (d, l) = (self.trainData[r][:], self.trainLabels[r][:])
+
         elif dataSet == 'test':
-            train = False
-            test = True
-        else:
-            raise ValueError('_getBatch: Unrecognised set: ' + dataSet)
+            start_idx = batchNum * self.testBatchSize
+            end_idx = (batchNum + 1) * self.testBatchSize
+            if batchNum == self.numBatches - 1:
+                end_idx = self.nTestSamples - 1
+            r = range(start_idx, end_idx)
 
-        while True:
-            if train:
-                r = range(self.currentIndexTrain,
-                          min(self.currentIndexTrain + self.batchSize - L.shape[0], self.nTrainSamples))
-                self.currentIndexTrain = r[-1] + 1 if r[-1] < self.nTrainSamples - 1 else 0
-                (d, l) = (self.trainData[self.pTrain[r]][:], self.trainLabels[self.pTrain[r]][:])
-            elif test:
-                r = range(self.currentIndexTest,
-                          min(self.currentIndexTest + self.batchSize - L.shape[0], self.nTestSamples))
-                self.currentIndexTest = r[-1] + 1 if r[-1] < self.nTestSamples - 1 else 0
-                (d, l) = (self.testData[self.pTest[r]][:], self.testLabels[self.pTest[r]][:])
+            (d, l) = (self.testData[r][:], self.testLabels[r][:])
 
-            d = np.apply_along_axis(melspectrogram, axis=1, arr=d)
+        d = np.apply_along_axis(melspectrogram, axis=-1, arr=d)
 
-            if D.size == 0:
-                D = d
-                L = l
-            else:
-                D = np.concatenate((D, d))
-                L = np.concatenate((L, l))
-
-            if D.shape[0] == self.batchSize or allowSmallerBatches:
-                break
-
-        return (D, L)
+        return (d, l)
 
     def getTrackSamples(self, track_id):
-        print('test data shape: {}'.format(self.testData.shape))
         trackIndices = np.where(self.testTracks == track_id)[0]
         D = self.testData[trackIndices]
         D = np.apply_along_axis(melspectrogram, axis=1, arr=D)
         label = self.testLabels[trackIndices[0]]
         return D, label
-
-    def testPrint(self):
-        print('test track 0: {}'.format(self.testTracks[1000:1030]))
 
     def reset(self):
         self.currentIndexTrain = 0
