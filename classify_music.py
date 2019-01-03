@@ -32,7 +32,7 @@ tf.app.flags.DEFINE_string('net-depth', 'shallow',
                             'Whether to use the deep or shallow network. (default: %(default)s)')
 tf.app.flags.DEFINE_string('data-dir', os.getcwd() + '/dataset/',
                             'Directory where the dataset will be stored and checkpoint. (default: %(default)s)')
-tf.app.flags.DEFINE_integer('max-steps', 100,
+tf.app.flags.DEFINE_integer('max-steps', 2,
                             'Number of mini-batches to train on. (default: %(default)d)')
 tf.app.flags.DEFINE_integer('log-frequency', 99,
                             'Number of steps between logging results to the console and saving summaries (default: %(default)d)')
@@ -46,7 +46,7 @@ tf.app.flags.DEFINE_float('learning-rate', 5e-5, 'Learning rate (default: %(defa
 tf.app.flags.DEFINE_integer('img-width', 80, 'Image width (default: %(default)d)')
 tf.app.flags.DEFINE_integer('img-height', 80, 'Image height (default: %(default)d)')
 tf.app.flags.DEFINE_integer('num-classes', 10, 'Number of classes (default: %(default)d)')
-tf.app.flags.DEFINE_string('log-dir', '{cwd}/{d}/logs/'.format(cwd=os.getcwd(), d='deep'),
+tf.app.flags.DEFINE_string('log-dir', '{cwd}/{d}/logs/'.format(cwd=os.getcwd(), d='shallow_test'),
                            'Directory where to write event logs and checkpoint. (default: %(default)s)')
 
 
@@ -467,10 +467,13 @@ def main(_):
     raw_accuracy = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_, 1), tf.argmax(y_conv, 1)), tf.float32))
 
     max_prob_prediction = tf.argmax(tf.reduce_sum(y_conv, 0), 0)
-    max_prob_prediction_correct = tf.cast(tf.equal(max_prob_prediction, tf.argmax(label)), tf.float32)
+    max_prob_prediction_correct = tf.cast(tf.equal(max_prob_prediction, tf.argmax(label)), tf.int32)
 
-    maj_vote_prediction = tf.argmax(tf.math.bincount(tf.argmax(y_conv, 1)), 0)
-    maj_vote_prediction_correct = tf.cast(tf.equal(maj_vote_prediction, tf.argmax(label)), tf.float32)
+    majvote1 = tf.argmax(y_conv, 1)
+    majvote2 = tf.bincount(tf.cast(majvote1, tf.int32))
+    maj_vote_prediction = tf.argmax(majvote2)
+    # maj_vote_prediction = tf.argmax(tf.bincount(tf.cast(tf.argmax(y_conv, 1), tf.int32)), 0)
+    maj_vote_prediction_correct = tf.cast(tf.equal(maj_vote_prediction, tf.argmax(label)), tf.int32)
 
     loss_summary = tf.summary.scalar('Loss', cross_entropy)
     raw_acc_summary = tf.summary.scalar('Raw Accuracy', raw_accuracy)
