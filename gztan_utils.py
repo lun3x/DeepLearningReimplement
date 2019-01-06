@@ -76,13 +76,22 @@ class GZTan2:
         self.testData = np.array(test_set['data'])
         self.testLabels = oneHotVector(test_set['labels'], 10)
         self.testTracks = np.array(test_set['track_id'])
+        self.trainTracks = np.array(train_set['track_id'])
 
         self.nTrainSamples = len(self.trainLabels)
         self.nTestSamples = len(self.testLabels)
         self.nTracks = len(np.lib.arraysetops.unique(self.testTracks))
+        self.nTrainTracks = len(np.lib.arraysetops.unique(self.trainTracks))
 
         self.trainBatchSize = self.nTrainSamples // self.numBatches
         self.testBatchSize = self.nTestSamples // self.numBatches
+
+        print('testBatchSize: {}, trainBatchSize: {}'.format(self.testBatchSize, self.trainBatchSize))
+        print('trainData length: {}, testData length: {}'.format(len(self.trainData), len(self.testData)))
+
+        # print('shape of test tracks {}'.format(self.testTracks.shape))
+        trackIndices = np.where(self.testTracks == 0)
+        print('length of tuple: {}, shape of track indices[0]: {}'.format(len(trackIndices), trackIndices[0].shape))
 
     def getTrainBatch(self, batchNum):
         return self._getBatch2('train', batchNum)
@@ -113,15 +122,16 @@ class GZTan2:
 
         return (d, l)
 
+    def getOriginalSample(self, track_id, sample_id):
+        trackIndices = np.where(self.testTracks == track_id)[0]
+        D = self.testData[trackIndices]
+        D = D[sample_id]
+        return D
+
     def getTrackSamples(self, track_id):
         trackIndices = np.where(self.testTracks == track_id)[0]
+        # print('shape of track indices: {}'.format(trackIndices.shape))
         D = self.testData[trackIndices]
         D = np.apply_along_axis(melspectrogram, axis=1, arr=D)
         label = self.testLabels[trackIndices[0]]
         return D, label
-
-    def reset(self):
-        self.currentIndexTrain = 0
-        self.currentIndexTest = 0
-        self.pTrain = np.random.permutation(self.nTrainSamples)
-        self.pTest = np.random.permutation(self.nTestSamples)

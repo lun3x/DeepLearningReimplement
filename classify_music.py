@@ -20,8 +20,13 @@ import os
 import os.path
 
 import tensorflow as tf
-
+import numpy as np
+import librosa
+from librosa.display import specshow
 import pickle
+import matplotlib
+matplotlib.use('Agg') # No pictures displayed 
+import pylab
 
 # from utils import GZTan
 from gztan_utils import GZTan2
@@ -32,9 +37,9 @@ tf.app.flags.DEFINE_string('net-depth', 'shallow',
                             'Whether to use the deep or shallow network. (default: %(default)s)')
 tf.app.flags.DEFINE_string('data-dir', os.getcwd() + '/dataset/',
                             'Directory where the dataset will be stored and checkpoint. (default: %(default)s)')
-tf.app.flags.DEFINE_integer('max-steps', 2,
+tf.app.flags.DEFINE_integer('max-steps', 1,
                             'Number of mini-batches to train on. (default: %(default)d)')
-tf.app.flags.DEFINE_integer('log-frequency', 99,
+tf.app.flags.DEFINE_integer('log-frequency', 10,
                             'Number of steps between logging results to the console and saving summaries (default: %(default)d)')
 tf.app.flags.DEFINE_integer('save-model', 1000,
                             'Number of steps between model saves (default: %(default)d)')
@@ -46,7 +51,7 @@ tf.app.flags.DEFINE_float('learning-rate', 5e-5, 'Learning rate (default: %(defa
 tf.app.flags.DEFINE_integer('img-width', 80, 'Image width (default: %(default)d)')
 tf.app.flags.DEFINE_integer('img-height', 80, 'Image height (default: %(default)d)')
 tf.app.flags.DEFINE_integer('num-classes', 10, 'Number of classes (default: %(default)d)')
-tf.app.flags.DEFINE_string('log-dir', '{cwd}/{d}/logs/'.format(cwd=os.getcwd(), d='shallow_test'),
+tf.app.flags.DEFINE_string('log-dir', '{cwd}/{d}/logs/'.format(cwd=os.getcwd(), d='shallow_100'),
                            'Directory where to write event logs and checkpoint. (default: %(default)s)')
 
 
@@ -430,6 +435,8 @@ def main(_):
     # Import data
     gztan = GZTan2(FLAGS.num_batches)
 
+    print('num train tracks: {}'.format(gztan.nTrainTracks))
+
     with tf.variable_scope('inputs'):
         # Create the model
         x = tf.placeholder(tf.float32, [None, 80, 80, 1])
@@ -464,15 +471,15 @@ def main(_):
     # optimizer = tf.train.AdamOptimizer(our_learning_rate).minimize(cross_entropy, global_step=batch_number)
     # calculate the prediction and the accuracy
     
-    raw_accuracy = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_, 1), tf.argmax(y_conv, 1)), tf.float32))
+    raw_prediction = tf.argmax(y_conv, 1)
+    raw_prediction_correct = tf.cast(tf.equal(raw_prediction, tf.argmax(y_, 1)), tf.float32)
+    raw_accuracy = tf.reduce_mean(raw_prediction_correct)
 
     max_prob_prediction = tf.argmax(tf.reduce_sum(y_conv, 0), 0)
     max_prob_prediction_correct = tf.cast(tf.equal(max_prob_prediction, tf.argmax(label)), tf.int32)
 
-    majvote1 = tf.argmax(y_conv, 1)
-    majvote2 = tf.bincount(tf.cast(majvote1, tf.int32))
-    maj_vote_prediction = tf.argmax(majvote2)
-    # maj_vote_prediction = tf.argmax(tf.bincount(tf.cast(tf.argmax(y_conv, 1), tf.int32)), 0)
+    vote_count = tf.bincount(tf.cast(raw_prediction, tf.int32))
+    maj_vote_prediction = tf.argmax(vote_count)
     maj_vote_prediction_correct = tf.cast(tf.equal(maj_vote_prediction, tf.argmax(label)), tf.int32)
 
     loss_summary = tf.summary.scalar('Loss', cross_entropy)
@@ -530,19 +537,33 @@ def main(_):
         # Testing
 
         # resetting the internal batch indexes
-        gztan.reset()
         mp_pred_correct = []
         mv_pred_correct = []
 
-        print('num tracks: {}'.format(gztan.nTracks))
+        print('num test tracks: {}'.format(gztan.nTracks))
         for track_id in range(gztan.nTracks):
             (track_samples, track_label) = gztan.getTrackSamples(track_id)
             test_mp_prediction_correct = sess.run(max_prob_prediction_correct, feed_dict={x: track_samples, train_flag: [False], label: track_label})
             test_mv_prediction_correct = sess.run(maj_vote_prediction_correct, feed_dict={x: track_samples, train_flag: [False], label: track_label})
+            test_raw_predictions = sess.run(raw_prediction, feed_dict={x: track_samples, train_flag: [False]})
+            
+            incorrect_pred_idxs = np.where(test_raw_predictions != np.argmax(track_label))[0]
 
             # print('test_prediction_correct: {}'.format(test_prediction_correct))
             mp_pred_correct.append(test_mp_prediction_correct)
             mv_pred_correct.append(test_mv_prediction_correct)
+
+            if track_id == 0:
+                sample = np.array(gztan.getOriginalSample(track_id, incorrect_pred_idxs[0]))
+                print('shape of sample: {}'.format(sample.shape))
+                librosa.output.write_wav('example.wav', y=sample, sr=22050)
+
+                sample_spec = track_samples[incorrect_pred_idxs[0]]
+                # print('shape of sample_spec'.format(sample_spec.shape))
+                specshow(sample_spec.reshape([80, 80]), y_axis='linear')
+
+                pylab.savefig('example.png', bbox_inches=None, pad_inches=0)
+                pylab.close()
 
         test_mp_accuracy = sum(mp_pred_correct) / len(mp_pred_correct)
         test_mv_accuracy = sum(mv_pred_correct) / len(mv_pred_correct)
