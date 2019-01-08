@@ -37,7 +37,7 @@ tf.app.flags.DEFINE_string('net-depth', 'shallow',
                             'Whether to use the deep or shallow network. (default: %(default)s)')
 tf.app.flags.DEFINE_string('data-dir', os.getcwd() + '/dataset/',
                             'Directory where the dataset will be stored and checkpoint. (default: %(default)s)')
-tf.app.flags.DEFINE_integer('max-steps', 1,
+tf.app.flags.DEFINE_integer('max-steps', 100,
                             'Number of mini-batches to train on. (default: %(default)d)')
 tf.app.flags.DEFINE_integer('log-frequency', 10,
                             'Number of steps between logging results to the console and saving summaries (default: %(default)d)')
@@ -472,7 +472,7 @@ def main(_):
     # calculate the prediction and the accuracy
     
     raw_prediction = tf.argmax(y_conv, 1)
-    raw_prediction_correct = tf.cast(tf.equal(raw_prediction, tf.argmax(y_, 1)), tf.float32)
+    raw_prediction_correct = tf.cast(tf.equal(raw_prediction, tf.argmax(y_, 1)), tf.int32)
     raw_accuracy = tf.reduce_mean(raw_prediction_correct)
 
     max_prob_prediction = tf.argmax(tf.reduce_sum(y_conv, 0), 0)
@@ -539,36 +539,50 @@ def main(_):
         # resetting the internal batch indexes
         mp_pred_correct = []
         mv_pred_correct = []
+        raw_pred_acc = []
+        done = False
 
         print('num test tracks: {}'.format(gztan.nTracks))
         for track_id in range(gztan.nTracks):
-            (track_samples, track_label) = gztan.getTrackSamples(track_id)
-            test_mp_prediction_correct = sess.run(max_prob_prediction_correct, feed_dict={x: track_samples, train_flag: [False], label: track_label})
-            test_mv_prediction_correct = sess.run(maj_vote_prediction_correct, feed_dict={x: track_samples, train_flag: [False], label: track_label})
+            (track_samples, track_labels) = gztan.getTrackSamples(track_id)
+            track_label = track_labels[0]
+            test_raw_acc = sess.run(raw_accuracy, feed_dict={x: track_samples, train_flag: [False], y_: track_labels})
+
+            test_mp_prediction = sess.run(max_prob_prediction, feed_dict={x: track_samples, train_flag: [False]})
+            test_mp_prediction_correct = (test_mp_prediction == np.argmax(track_label))
+            test_mv_prediction = sess.run(maj_vote_prediction, feed_dict={x: track_samples, train_flag: [False], label: track_label})
+            test_mv_prediction_correct = (test_mv_prediction == np.argmax(track_label))
+
             test_raw_predictions = sess.run(raw_prediction, feed_dict={x: track_samples, train_flag: [False]})
-            
-            incorrect_pred_idxs = np.where(test_raw_predictions != np.argmax(track_label))[0]
 
             # print('test_prediction_correct: {}'.format(test_prediction_correct))
             mp_pred_correct.append(test_mp_prediction_correct)
             mv_pred_correct.append(test_mv_prediction_correct)
+            raw_pred_acc.append(test_raw_acc)
 
-            if track_id == 0:
-                sample = np.array(gztan.getOriginalSample(track_id, incorrect_pred_idxs[0]))
-                print('shape of sample: {}'.format(sample.shape))
-                librosa.output.write_wav('example.wav', y=sample, sr=22050)
+            if test_mv_prediction_correct and not test_mp_prediction_correct and not done:
+                done = True
+                # np.where outputs a 1-tuple so do [0] on this to get actual result
+                print('test_mp_prediction: {} test_mv_prediction: {} true label: {}'.format(test_mp_prediction, test_mv_prediction, np.argmax(track_label)))
+                incorrect_pred_idxs = np.where(test_raw_predictions != np.argmax(track_label))[0]
+                print('found at track_id: {}!'.format(track_id))
+                for idx in incorrect_pred_idxs:
+                    print('Incorrectly classified sample {} as {}. Should be {}.'.format(idx, test_raw_predictions[idx], np.argmax(track_label)))
+                    sample = np.array(gztan.getOriginalSample(track_id, idx))
+                    librosa.output.write_wav('incorrect/{d}/track{t}_example{e}.wav'.format(d=FLAGS.net_depth, t=track_id, e=idx), y=sample, sr=22050)
 
-                sample_spec = track_samples[incorrect_pred_idxs[0]]
-                # print('shape of sample_spec'.format(sample_spec.shape))
-                specshow(sample_spec.reshape([80, 80]), y_axis='linear')
+                    sample_spec = track_samples[idx]
+                    specshow(sample_spec.reshape([80, 80]), y_axis='mel')
 
-                pylab.savefig('example.png', bbox_inches=None, pad_inches=0)
-                pylab.close()
-
+                    pylab.savefig('incorrect/{d}/track{t}_example{e}.png'.format(d=FLAGS.net_depth, t=track_id, e=idx), bbox_inches=None, pad_inches=0)
+                    pylab.close()
+        
         test_mp_accuracy = sum(mp_pred_correct) / len(mp_pred_correct)
         test_mv_accuracy = sum(mv_pred_correct) / len(mv_pred_correct)
+        test_raw_accuracy = sum(raw_pred_acc) / len(raw_pred_acc)
         print('test set: max prob accuracy on test set: %0.3f' % test_mp_accuracy)
         print('test set: maj vote accuracy on test set: %0.3f' % test_mv_accuracy)
+        print('test set: raw accuracy on test set: %0.3f' % test_raw_accuracy)
 
 if __name__ == '__main__':
     tf.app.run(main=main)

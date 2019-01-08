@@ -1,6 +1,3 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
-
 from __future__ import print_function, unicode_literals
 import six.moves.urllib.request as request
 import six
@@ -133,5 +130,5 @@ class GZTan2:
         # print('shape of track indices: {}'.format(trackIndices.shape))
         D = self.testData[trackIndices]
         D = np.apply_along_axis(melspectrogram, axis=1, arr=D)
-        label = self.testLabels[trackIndices[0]]
-        return D, label
+        labels = self.testLabels[trackIndices]
+        return D, labels
