@@ -38,6 +38,8 @@ class GZTan2:
     nTrainSamples = 0
     nTestSamples = 0
     nTracks = 0
+    pTrain = []
+    pTest = []
 
     def __init__(self, numBatches=50):
         self.numBatches = numBatches
@@ -55,6 +57,10 @@ class GZTan2:
         max = np.max(imgs_flat)
         range = max - min
         return (imgs_flat - min) / range
+
+    def shuffle(self):
+        self.pTrain = np.random.permutation(self.nTrainSamples)
+        self.pTest = np.random.permutation(self.nTestSamples)
 
     def _unflatten(self, imgs_flat):
         return imgs_flat.reshape(-1, self.IMG_WIDTH, self.IMG_HEIGHT)
@@ -83,6 +89,9 @@ class GZTan2:
         self.trainBatchSize = self.nTrainSamples // self.numBatches
         self.testBatchSize = self.nTestSamples // self.numBatches
 
+        self.pTrain = np.random.permutation(self.nTrainSamples)
+        self.pTest = np.random.permutation(self.nTestSamples)
+
         print('testBatchSize: {}, trainBatchSize: {}'.format(self.testBatchSize, self.trainBatchSize))
         print('trainData length: {}, testData length: {}'.format(len(self.trainData), len(self.testData)))
 
@@ -91,12 +100,12 @@ class GZTan2:
         print('length of tuple: {}, shape of track indices[0]: {}'.format(len(trackIndices), trackIndices[0].shape))
 
     def getTrainBatch(self, batchNum):
-        return self._getBatch2('train', batchNum)
+        return self._getBatch('train', batchNum)
 
     def getTestBatch(self, batchNum):
-        return self._getBatch2('test', batchNum)
+        return self._getBatch('test', batchNum)
 
-    def _getBatch2(self, dataSet, batchNum):
+    def _getBatch(self, dataSet, batchNum):
         if dataSet == 'train':
             start_idx = batchNum * self.trainBatchSize
             end_idx = (batchNum + 1) * self.trainBatchSize
@@ -104,7 +113,7 @@ class GZTan2:
                 end_idx = self.nTrainSamples - 1
             r = range(start_idx, end_idx)
 
-            (d, l) = (self.trainData[r][:], self.trainLabels[r][:])
+            (d, l) = (self.trainData[self.pTrain[r]][:], self.trainLabels[self.pTrain[r]][:])
 
         elif dataSet == 'test':
             start_idx = batchNum * self.testBatchSize
@@ -113,7 +122,7 @@ class GZTan2:
                 end_idx = self.nTestSamples - 1
             r = range(start_idx, end_idx)
 
-            (d, l) = (self.testData[r][:], self.testLabels[r][:])
+            (d, l) = (self.testData[self.pTest[r]][:], self.testLabels[self.pTest[r]][:])
 
         d = np.apply_along_axis(melspectrogram, axis=-1, arr=d)
 
