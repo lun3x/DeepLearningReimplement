@@ -37,7 +37,7 @@ tf.app.flags.DEFINE_string('net-depth', 'shallow',
                             'Whether to use the deep or shallow network. (default: %(default)s)')
 tf.app.flags.DEFINE_string('data-dir', os.getcwd() + '/dataset/',
                             'Directory where the dataset will be stored and checkpoint. (default: %(default)s)')
-tf.app.flags.DEFINE_integer('max-steps', 100,
+tf.app.flags.DEFINE_integer('max-steps', 1,
                             'Number of mini-batches to train on. (default: %(default)d)')
 tf.app.flags.DEFINE_integer('log-frequency', 10,
                             'Number of steps between logging results to the console and saving summaries (default: %(default)d)')
@@ -51,12 +51,12 @@ tf.app.flags.DEFINE_float('learning-rate', 5e-5, 'Learning rate (default: %(defa
 tf.app.flags.DEFINE_integer('img-width', 80, 'Image width (default: %(default)d)')
 tf.app.flags.DEFINE_integer('img-height', 80, 'Image height (default: %(default)d)')
 tf.app.flags.DEFINE_integer('num-classes', 10, 'Number of classes (default: %(default)d)')
-tf.app.flags.DEFINE_string('log-dir', '{cwd}/{d}/logs/'.format(cwd=os.getcwd(), d='shallow_100'),
+tf.app.flags.DEFINE_string('log-dir', '{cwd}/{d}/logs/'.format(cwd=os.getcwd(), d=FLAGS.net_depth),
                            'Directory where to write event logs and checkpoint. (default: %(default)s)')
 
 
-run_log_dir = os.path.join(FLAGS.log_dir,
-                           'genre_classify')
+# run_log_dir = os.path.join(FLAGS.log_dir,
+#                            'genre_classify')
 
 # the initialiser object implementing Xavier initialisation
 # we will generate weights from the uniform distribution
@@ -472,7 +472,7 @@ def main(_):
     # calculate the prediction and the accuracy
     
     raw_prediction = tf.argmax(y_conv, 1)
-    raw_prediction_correct = tf.cast(tf.equal(raw_prediction, tf.argmax(y_, 1)), tf.int32)
+    raw_prediction_correct = tf.cast(tf.equal(raw_prediction, tf.argmax(y_, 1)), tf.float32)
     raw_accuracy = tf.reduce_mean(raw_prediction_correct)
 
     max_prob_prediction = tf.argmax(tf.reduce_sum(y_conv, 0), 0)
@@ -494,8 +494,8 @@ def main(_):
     saver = tf.train.Saver(tf.global_variables(), max_to_keep=1)
 
     with tf.Session() as sess:
-        summary_writer = tf.summary.FileWriter(run_log_dir + '_train', sess.graph)
-        summary_writer_validation = tf.summary.FileWriter(run_log_dir + '_validate', sess.graph, flush_secs=5)
+        summary_writer = tf.summary.FileWriter(FLAGS.log_dir + '/_train', sess.graph)
+        summary_writer_validation = tf.summary.FileWriter(FLAGS.log_dir + '/_validate', sess.graph, flush_secs=5)
 
         sess.run(tf.global_variables_initializer())
 
@@ -531,7 +531,7 @@ def main(_):
 
             # Save the model checkpoint periodically.
             if step % FLAGS.save_model == 0 or (step + 1) == FLAGS.max_steps:
-                checkpoint_path = os.path.join(run_log_dir + '_train', 'model.ckpt')
+                checkpoint_path = FLAGS.log_dir + '/_train' + '/model.ckpt'
                 saver.save(sess, checkpoint_path, global_step=step)
 
         # Testing
@@ -553,21 +553,22 @@ def main(_):
             test_mv_prediction = sess.run(maj_vote_prediction, feed_dict={x: track_samples, train_flag: [False], label: track_label})
             test_mv_prediction_correct = (test_mv_prediction == np.argmax(track_label))
 
-            test_raw_predictions = sess.run(raw_prediction, feed_dict={x: track_samples, train_flag: [False]})
-
             # print('test_prediction_correct: {}'.format(test_prediction_correct))
             mp_pred_correct.append(test_mp_prediction_correct)
             mv_pred_correct.append(test_mv_prediction_correct)
             raw_pred_acc.append(test_raw_acc)
 
-            if test_mv_prediction_correct and not test_mp_prediction_correct and not done:
+            if not test_mv_prediction_correct and not test_mp_prediction_correct and not done:
+                test_raw_confidences = sess.run(y_conv, feed_dict={x: track_samples: train_flag: [False]})
+                test_raw_predictions = np.argmax(test_raw_confidences, axis=1)
+
                 done = True
                 # np.where outputs a 1-tuple so do [0] on this to get actual result
                 print('test_mp_prediction: {} test_mv_prediction: {} true label: {}'.format(test_mp_prediction, test_mv_prediction, np.argmax(track_label)))
                 incorrect_pred_idxs = np.where(test_raw_predictions != np.argmax(track_label))[0]
                 print('found at track_id: {}!'.format(track_id))
                 for idx in incorrect_pred_idxs:
-                    print('Incorrectly classified sample {} as {}. Should be {}.'.format(idx, test_raw_predictions[idx], np.argmax(track_label)))
+                    print('Incorrectly classified sample {} with as {} with confidences {}. Should be {}.'.format(idx, test_raw_predictions[idx], test_raw_confidences[idx], np.argmax(track_label)))
                     sample = np.array(gztan.getOriginalSample(track_id, idx))
                     librosa.output.write_wav('incorrect/{d}/track{t}_example{e}.wav'.format(d=FLAGS.net_depth, t=track_id, e=idx), y=sample, sr=22050)
 
