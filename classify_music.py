@@ -559,7 +559,7 @@ def main(_):
             raw_pred_acc.append(test_raw_acc)
 
             if not test_mv_prediction_correct and not test_mp_prediction_correct and not done:
-                test_raw_confidences = sess.run(y_conv, feed_dict={x: track_samples: train_flag: [False]})
+                test_raw_confidences = sess.run(y_conv, feed_dict={x: track_samples, train_flag: [False]})
                 test_raw_predictions = np.argmax(test_raw_confidences, axis=1)
 
                 done = True
