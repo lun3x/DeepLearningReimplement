@@ -84,14 +84,11 @@ def shallownn(x, train_flag):
     # 4 for RGBA, etc.
 
     #-1 is used here to infer the shape. We might not know how many N_examples are passed in as x
-    x_image = tf.reshape(x, [-1, FLAGS.img_width, FLAGS.img_height, 1])
-
-    img_summary = tf.summary.image('Input_images', x_image)
 
     # First convolutional layer - maps one image to 16 feature maps.
     with tf.variable_scope('Conv_Spectral_1'):
         conv_spec_1 = tf.layers.conv2d(
-            inputs=x_image,
+            inputs=x,
             filters=16,
             kernel_size=[10, 23],
             padding='same',
@@ -117,7 +114,7 @@ def shallownn(x, train_flag):
 
     with tf.variable_scope('Conv_Temporal_1'):
         conv_temp_1 = tf.layers.conv2d(
-            inputs=x_image,
+            inputs=x,
             filters=16,
             kernel_size=[21, 20],
             padding='same',
@@ -168,7 +165,7 @@ def shallownn(x, train_flag):
             kernel_initializer=xavier_initializer,
             name='fc3'
         )
-        return fc3, img_summary
+        return fc3
 
 def deepnn(x, train_flag):
     """deepnn builds the graph for a deep net for classifying CIFAR10 images.
@@ -183,19 +180,11 @@ def deepnn(x, train_flag):
         (airplane, automobile, bird, cat, deer, dog, frog, horse, ship, truck)
       img_summary: a string tensor containing sampled input images.
     """
-    # Reshape to use within a convolutional neural net.  Last dimension is for
-    # 'features' - it would be 1 one for a grayscale image, 3 for an RGB image,
-    # 4 for RGBA, etc.
-
-    #-1 is used here to infer the shape. We might not know how many N_examples are passed in as x
-    x_image = tf.reshape(x, [-1, FLAGS.img_width, FLAGS.img_height, 1])
-
-    img_summary = tf.summary.image('Input_images', x_image)
 
     # First convolutional layer - maps one image to 16 feature maps.
     with tf.variable_scope('Conv_Spectral_1'):
         conv_spec_1 = tf.layers.conv2d(
-            inputs=x_image,
+            inputs=x,
             filters=16,
             kernel_size=[10, 23],
             padding='same',
@@ -300,7 +289,7 @@ def deepnn(x, train_flag):
 
     with tf.variable_scope('Conv_Temporal_1'):
         conv_temp_1 = tf.layers.conv2d(
-            inputs=x_image,
+            inputs=x,
             filters=16,
             kernel_size=[21, 10],
             padding='same',
@@ -429,7 +418,7 @@ def deepnn(x, train_flag):
             kernel_initializer=xavier_initializer,
             name='fc3'
         )
-        return fc3, img_summary
+        return fc3
 
 def raw_acc(y_, y_conv):
     raw_correct_prediction = tf.equal(tf.argmax(y_, 1), tf.argmax(y_conv, 1))
@@ -454,29 +443,29 @@ def main(_):
     # Build the graph for the deep net
     if FLAGS.net_depth == 'shallow':
         print('SHALLOW')
-        y_conv, img_summary = shallownn(x, train_flag)
+        y_conv = shallownn(x, train_flag)
     elif FLAGS.net_depth == 'deep':
         print('DEEP')
-        y_conv, img_summary = deepnn(x, train_flag)
+        y_conv = deepnn(x, train_flag)
     else:
         print("Error: Unrecognised depth.")
         return
 
     # Define your loss function - softmax_cross_entropy
-    with tf.variable_scope("x_entropy"):
+    with tf.name_scope("regularized_loss"):
         cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv))
-        # l1_regularizer = tf.contrib.layers.l1_regularizer(scale=0.0001)
-        # weights = tf.trainable_variables()
-        # regularization_penalty = tf.contrib.layers.apply_regularization(l1_regularizer, weights)
-        # regularized_cross_entropy = cross_entropy + regularization_penalty
+        l1_regularizer = tf.contrib.layers.l1_regularizer(scale=0.0001)
+        weights = tf.trainable_variables()
+        regularization_penalty = tf.contrib.layers.apply_regularization(l1_regularizer, weights)
+        regularized_cross_entropy = tf.add(cross_entropy, regularization_penalty, name='reg_loss')
 
     # Define your AdamOptimiser, using FLAGS.learning_rate to minimixe the loss function
     if FLAGS.decay == 'const':
-        optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(cross_entropy)
+        optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(regularized_cross_entropy)
     else:
         batch_number = tf.Variable(0, trainable=False)
         our_learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, batch_number, 10, 0.9)
-        optimizer = tf.train.AdamOptimizer(our_learning_rate).minimize(cross_entropy, global_step=batch_number)
+        optimizer = tf.train.AdamOptimizer(our_learning_rate).minimize(regularized_cross_entropy, global_step=batch_number)
         
     # calculate the prediction and the accuracy
     
@@ -490,14 +479,6 @@ def main(_):
     vote_count = tf.bincount(tf.cast(raw_prediction, tf.int32))
     maj_vote_prediction = tf.argmax(vote_count)
     maj_vote_prediction_correct = tf.cast(tf.equal(maj_vote_prediction, tf.argmax(label)), tf.int32)
-
-    loss_summary = tf.summary.scalar('Loss', cross_entropy)
-    raw_acc_summary = tf.summary.scalar('Raw Accuracy', raw_accuracy)
-
-    # summaries for TensorBoard visualisation
-    # validation_summary = tf.summary.merge([img_summary, raw_acc_summary])
-    # training_summary = tf.summary.merge([img_summary, loss_summary])
-    # test_summary = tf.summary.merge([img_summary, raw_acc_summary])
 
     # saver for checkpoints
     saver = tf.train.Saver(tf.global_variables(), max_to_keep=1)
@@ -515,15 +496,13 @@ def main(_):
             total_loss = 0
             for batchNum in range(FLAGS.num_batches):
                 (train_samples, train_labels) = gztan.getTrainBatch(batchNum)
-                _, batch_loss = sess.run([optimizer, cross_entropy], feed_dict={x: train_samples, train_flag: [True], y_: train_labels})
+                _, batch_loss = sess.run([optimizer, regularized_cross_entropy], feed_dict={x: train_samples, train_flag: [True], y_: train_labels})
                 total_loss += batch_loss
 
             if step % (FLAGS.log_frequency + 1) == 0:
-                # loss_summary = tf.summary.scalar('Regularized Loss', total_loss)
                 loss_summary = tf.Summary(value=[
-                    tf.Summary.Value(tag="Unregularized_Loss", simple_value=total_loss), 
+                    tf.Summary.Value(tag="Regularized_Loss", simple_value=total_loss), 
                 ])
-                # training_summary = tf.summary.merge([img_summary, loss_summary])
                 summary_writer.add_summary(loss_summary, step)
 
             # Validation: Monitoring accuracy using validation set
@@ -537,11 +516,9 @@ def main(_):
                 total_accuracy = total_accuracy / FLAGS.num_batches
                 print('step %d, accuracy on validation batch: %g' % (step, total_accuracy))
 
-                # tot_acc_summary = tf.summary.scalar('Total Raw Accuracy', total_accuracy)
                 tot_acc_summary = tf.Summary(value=[
                     tf.Summary.Value(tag="Total_Raw_Accuracy", simple_value=total_accuracy), 
                 ])
-                # validation_summary = tf.summary.merge([img_summary, tot_acc_summary])
                 summary_writer_validation.add_summary(tot_acc_summary, step)
 
             # # Save the model checkpoint periodically.

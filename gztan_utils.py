@@ -139,7 +139,8 @@ class GZTan2:
 
             (d, l) = (self.testData[self.pTest[r]][:], self.testLabels[self.pTest[r]][:])
 
-        d = np.apply_along_axis(self.representationFunc, axis=-1, arr=d)
+        d = [self.representationFunc(s) for s in d]
+        # d = np.apply_along_axis(self.representationFunc, axis=-1, arr=d)
 
         return (d, l)
 
@@ -153,7 +154,8 @@ class GZTan2:
         trackIndices = np.where(self.testTracks == track_id)[0]
         # print('shape of track indices: {}'.format(trackIndices.shape))
         D = self.testData[trackIndices]
-        D = np.apply_along_axis(self.representationFunc, axis=1, arr=D)
+        D = [self.representationFunc(s) for s in D]
+        # D = np.apply_along_axis(self.representationFunc, axis=1, arr=D)
         labels = self.testLabels[trackIndices]
         return D, labels
 
