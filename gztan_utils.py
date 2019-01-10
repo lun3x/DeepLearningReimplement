@@ -20,13 +20,14 @@ def melspectrogram(audio):
 
 def cqt(audio, p=False):
     cqt = librosa.core.cqt(audio, sr=22050, hop_length=256, n_bins=80, pad_mode='constant')
+    cqt_abs = np.abs(cqt)
     # spec = librosa.stft(audio, n_fft=512, window='hann', hop_length=256, win_length=512, pad_mode='constant')
     # cqt_basis = librosa.filters.constant_q(sr=22050, n_bins=80)
     # cqt_spec = np.dat(cqt_basis, np.abs(spec))
     # np.log(cqt_spec + 1e-6).reshape([80, 80, 1])
     if p:
-        print('cqt at 0, 0: {}'.format(cqt[0, 0]))
-    return cqt.reshape([80, 80, 1])
+        print('cqt at 0, 0: {}'.format(cqt_abs[0, 0]))
+    return np.log(cqt_abs + 1e-6).reshape([80, 80, 1])
 
 def oneHotVector(classIdx, numClasses):
     v = np.zeros((len(classIdx), numClasses), dtype=np.int)

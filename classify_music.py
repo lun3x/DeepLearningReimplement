@@ -465,18 +465,18 @@ def main(_):
     # Define your loss function - softmax_cross_entropy
     with tf.variable_scope("x_entropy"):
         cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv))
-        l1_regularizer = tf.contrib.layers.l1_regularizer(scale=0.0001)
-        weights = tf.trainable_variables()
-        regularization_penalty = tf.contrib.layers.apply_regularization(l1_regularizer, weights)
-        regularized_cross_entropy = cross_entropy + regularization_penalty
+        # l1_regularizer = tf.contrib.layers.l1_regularizer(scale=0.0001)
+        # weights = tf.trainable_variables()
+        # regularization_penalty = tf.contrib.layers.apply_regularization(l1_regularizer, weights)
+        # regularized_cross_entropy = cross_entropy + regularization_penalty
 
     # Define your AdamOptimiser, using FLAGS.learning_rate to minimixe the loss function
     if FLAGS.decay == 'const':
-        optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(regularized_cross_entropy)
+        optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(cross_entropy)
     else:
         batch_number = tf.Variable(0, trainable=False)
         our_learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, batch_number, 10, 0.9)
-        optimizer = tf.train.AdamOptimizer(our_learning_rate).minimize(regularized_cross_entropy, global_step=batch_number)
+        optimizer = tf.train.AdamOptimizer(our_learning_rate).minimize(cross_entropy, global_step=batch_number)
         
     # calculate the prediction and the accuracy
     
@@ -491,7 +491,7 @@ def main(_):
     maj_vote_prediction = tf.argmax(vote_count)
     maj_vote_prediction_correct = tf.cast(tf.equal(maj_vote_prediction, tf.argmax(label)), tf.int32)
 
-    loss_summary = tf.summary.scalar('Loss', regularized_cross_entropy)
+    loss_summary = tf.summary.scalar('Loss', cross_entropy)
     raw_acc_summary = tf.summary.scalar('Raw Accuracy', raw_accuracy)
 
     # summaries for TensorBoard visualisation
@@ -515,13 +515,13 @@ def main(_):
             total_loss = 0
             for batchNum in range(FLAGS.num_batches):
                 (train_samples, train_labels) = gztan.getTrainBatch(batchNum)
-                _, batch_loss = sess.run([optimizer, regularized_cross_entropy], feed_dict={x: train_samples, train_flag: [True], y_: train_labels})
+                _, batch_loss = sess.run([optimizer, cross_entropy], feed_dict={x: train_samples, train_flag: [True], y_: train_labels})
                 total_loss += batch_loss
 
             if step % (FLAGS.log_frequency + 1) == 0:
                 # loss_summary = tf.summary.scalar('Regularized Loss', total_loss)
                 loss_summary = tf.Summary(value=[
-                    tf.Summary.Value(tag="Regularized_Loss", simple_value=total_loss), 
+                    tf.Summary.Value(tag="Unregularized_Loss", simple_value=total_loss), 
                 ])
                 # training_summary = tf.summary.merge([img_summary, loss_summary])
                 summary_writer.add_summary(loss_summary, step)
