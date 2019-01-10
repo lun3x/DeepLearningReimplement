@@ -55,7 +55,7 @@ tf.app.flags.DEFINE_float('learning-rate', 5e-5, 'Learning rate (default: %(defa
 tf.app.flags.DEFINE_integer('img-width', 80, 'Image width (default: %(default)d)')
 tf.app.flags.DEFINE_integer('img-height', 80, 'Image height (default: %(default)d)')
 tf.app.flags.DEFINE_integer('num-classes', 10, 'Number of classes (default: %(default)d)')
-tf.app.flags.DEFINE_string('log-dir', '{cwd}/{d}_{rep}_{decay}/logs/'.format(cwd=os.getcwd(), d=FLAGS.net_depth, rep=FLAGS.repr_func, decay=FLAGS.decay),
+tf.app.flags.DEFINE_string('log-dir', '{cwd}/{d}_{rep}_{decay}_{steps}/logs/'.format(cwd=os.getcwd(), d=FLAGS.net_depth, rep=FLAGS.repr_func, decay=FLAGS.decay, steps=str(FLAGS.max_steps)),
                            'Directory where to write event logs and checkpoint. (default: %(default)s)')
 
 
