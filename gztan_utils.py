@@ -49,6 +49,8 @@ class GZTan2:
     nTestSamples = 0
     nTracks = 0
     representationFunc = melspectrogram
+    pTrain = []
+    pTest = []
 
     def __init__(self, numBatches=50, mel=True):
         self.numBatches = numBatches
@@ -99,6 +101,9 @@ class GZTan2:
         self.trainBatchSize = self.nTrainSamples // self.numBatches
         self.testBatchSize = self.nTestSamples // self.numBatches
 
+        self.pTrain = np.random.permutation(self.nTrainSamples)
+        self.pTest = np.random.permutation(self.nTestSamples)
+
         cqt(self.testData[0][:], p=True)
 
         print('testBatchSize: {}, trainBatchSize: {}'.format(self.testBatchSize, self.trainBatchSize))
@@ -122,7 +127,7 @@ class GZTan2:
                 end_idx = self.nTrainSamples - 1
             r = range(start_idx, end_idx)
 
-            (d, l) = (self.trainData[r][:], self.trainLabels[r][:])
+            (d, l) = (self.trainData[self.pTrain[r]][:], self.trainLabels[self.pTrain[r]][:])
 
         elif dataSet == 'test':
             start_idx = batchNum * self.testBatchSize
@@ -131,7 +136,7 @@ class GZTan2:
                 end_idx = self.nTestSamples - 1
             r = range(start_idx, end_idx)
 
-            (d, l) = (self.testData[r][:], self.testLabels[r][:])
+            (d, l) = (self.testData[self.pTest[r]][:], self.testLabels[self.pTest[r]][:])
 
         d = np.apply_along_axis(self.representationFunc, axis=-1, arr=d)
 
@@ -150,3 +155,7 @@ class GZTan2:
         D = np.apply_along_axis(self.representationFunc, axis=1, arr=D)
         labels = self.testLabels[trackIndices]
         return D, labels
+
+    def shuffle(self):
+        self.pTrain = np.random.permutation(self.nTrainSamples)
+        self.pTest = np.random.permutation(self.nTestSamples)

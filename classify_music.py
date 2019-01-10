@@ -33,13 +33,17 @@ from gztan_utils import GZTan2
 
 FLAGS = tf.app.flags.FLAGS
 
+tf.app.flags.DEFINE_string('decay', 'const',
+                            'Whether to use constant or exp decay learning rate. (default: %(default)s)')
+tf.app.flags.DEFINE_string('repr-func', 'mel',
+                            'Whether to use mel, cqt_hz, or cqt_note. (default: %(default)s)')
 tf.app.flags.DEFINE_string('net-depth', 'shallow',
                             'Whether to use the deep or shallow network. (default: %(default)s)')
 tf.app.flags.DEFINE_string('data-dir', os.getcwd() + '/dataset/',
                             'Directory where the dataset will be stored and checkpoint. (default: %(default)s)')
-tf.app.flags.DEFINE_integer('max-steps', 1,
+tf.app.flags.DEFINE_integer('max-steps', 100,
                             'Number of mini-batches to train on. (default: %(default)d)')
-tf.app.flags.DEFINE_integer('log-frequency', 10,
+tf.app.flags.DEFINE_integer('log-frequency', 9,
                             'Number of steps between logging results to the console and saving summaries (default: %(default)d)')
 tf.app.flags.DEFINE_integer('save-model', 1000,
                             'Number of steps between model saves (default: %(default)d)')
@@ -51,7 +55,7 @@ tf.app.flags.DEFINE_float('learning-rate', 5e-5, 'Learning rate (default: %(defa
 tf.app.flags.DEFINE_integer('img-width', 80, 'Image width (default: %(default)d)')
 tf.app.flags.DEFINE_integer('img-height', 80, 'Image height (default: %(default)d)')
 tf.app.flags.DEFINE_integer('num-classes', 10, 'Number of classes (default: %(default)d)')
-tf.app.flags.DEFINE_string('log-dir', '{cwd}/{d}/logs/'.format(cwd=os.getcwd(), d=FLAGS.net_depth),
+tf.app.flags.DEFINE_string('log-dir', '{cwd}/{d}_{rep}_{decay}/logs/'.format(cwd=os.getcwd(), d=FLAGS.net_depth, rep=FLAGS.repr_func, decay=FLAGS.decay),
                            'Directory where to write event logs and checkpoint. (default: %(default)s)')
 
 
@@ -154,6 +158,8 @@ def shallownn(x, train_flag):
             kernel_initializer=xavier_initializer,
             name='fc1'
         )
+
+        # h_fc1 = tf.nn.relu(fc1, name='fc1_relu')
 
     with tf.variable_scope('FC_3'):
         fc3 = tf.layers.dense(
@@ -433,7 +439,7 @@ def main(_):
     tf.reset_default_graph()
 
     # Import data
-    gztan = GZTan2(FLAGS.num_batches)
+    gztan = GZTan2(FLAGS.num_batches, mel=(FLAGS.repr_func == 'mel'))
 
     print('num train tracks: {}'.format(gztan.nTrainTracks))
 
@@ -459,16 +465,19 @@ def main(_):
     # Define your loss function - softmax_cross_entropy
     with tf.variable_scope("x_entropy"):
         cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv))
-        # l1_regularizer = tf.contrib.layers.l1_regularizer(scale=0.0001)
-        # weights = tf.trainable_variables()
-        # regularization_penalty = tf.contrib.layers.apply_regularization(l1_regularizer, weights)
-        # regularized_cross_entropy = cross_entropy + regularization_penalty
+        l1_regularizer = tf.contrib.layers.l1_regularizer(scale=0.0001)
+        weights = tf.trainable_variables()
+        regularization_penalty = tf.contrib.layers.apply_regularization(l1_regularizer, weights)
+        regularized_cross_entropy = cross_entropy + regularization_penalty
 
     # Define your AdamOptimiser, using FLAGS.learning_rate to minimixe the loss function
-    optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(cross_entropy)
-    # batch_number = tf.Variable(0, trainable=False)
-    # our_learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, batch_number, 1000, 0.8)
-    # optimizer = tf.train.AdamOptimizer(our_learning_rate).minimize(cross_entropy, global_step=batch_number)
+    if FLAGS.decay == 'const':
+        optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(regularized_cross_entropy)
+    else:
+        batch_number = tf.Variable(0, trainable=False)
+        our_learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, batch_number, 10, 0.9)
+        optimizer = tf.train.AdamOptimizer(our_learning_rate).minimize(regularized_cross_entropy, global_step=batch_number)
+        
     # calculate the prediction and the accuracy
     
     raw_prediction = tf.argmax(y_conv, 1)
@@ -482,13 +491,13 @@ def main(_):
     maj_vote_prediction = tf.argmax(vote_count)
     maj_vote_prediction_correct = tf.cast(tf.equal(maj_vote_prediction, tf.argmax(label)), tf.int32)
 
-    loss_summary = tf.summary.scalar('Loss', cross_entropy)
+    loss_summary = tf.summary.scalar('Loss', regularized_cross_entropy)
     raw_acc_summary = tf.summary.scalar('Raw Accuracy', raw_accuracy)
 
     # summaries for TensorBoard visualisation
-    validation_summary = tf.summary.merge([img_summary, raw_acc_summary])
-    training_summary = tf.summary.merge([img_summary, loss_summary])
-    test_summary = tf.summary.merge([img_summary, raw_acc_summary])
+    # validation_summary = tf.summary.merge([img_summary, raw_acc_summary])
+    # training_summary = tf.summary.merge([img_summary, loss_summary])
+    # test_summary = tf.summary.merge([img_summary, raw_acc_summary])
 
     # saver for checkpoints
     saver = tf.train.Saver(tf.global_variables(), max_to_keep=1)
@@ -502,37 +511,44 @@ def main(_):
         # Training and validation
         for step in range(FLAGS.max_steps):
             # Training: Backpropagation using train set
-            # (trainImages, trainLabels) = cifar.getTrainBatch()
-            # (testImages, testLabels) = cifar.getTestBatch()
-            # (train_samples, train_labels) = gztan.getTrainData()
-            # _, summary_str = sess.run([optimizer, training_summary], feed_dict={x: train_samples, train_flag: [True], y_: train_labels})
-
+            total_loss = 0
             for batchNum in range(FLAGS.num_batches):
                 (train_samples, train_labels) = gztan.getTrainBatch(batchNum)
-                _, summary_str = sess.run([optimizer, training_summary], feed_dict={x: train_samples, train_flag: [True], y_: train_labels})
+                _, batch_loss = sess.run([optimizer, regularized_cross_entropy], feed_dict={x: train_samples, train_flag: [True], y_: train_labels})
+                total_loss += batch_loss
 
             if step % (FLAGS.log_frequency + 1) == 0:
-                summary_writer.add_summary(summary_str, step)
+                # loss_summary = tf.summary.scalar('Regularized Loss', total_loss)
+                loss_summary = tf.Summary(value=[
+                    tf.Summary.Value(tag="Regularized_Loss", simple_value=total_loss), 
+                ])
+                # training_summary = tf.summary.merge([img_summary, loss_summary])
+                summary_writer.add_summary(loss_summary, step)
 
             # Validation: Monitoring accuracy using validation set
             if step % FLAGS.log_frequency == 0:
-                # (test_samples, test_labels) = gztan.getTestData()
-                # validation_accuracy, summary_str = sess.run([raw_accuracy, validation_summary], feed_dict={x: test_samples, train_flag: [False], y_: test_labels})
-
-                total_accuracy = 0
+                total_accuracy = 0.0
                 for batchNum in range(FLAGS.num_batches):
                     (test_samples, test_labels) = gztan.getTestBatch(batchNum)
-                    validation_accuracy, summary_str = sess.run([raw_accuracy, validation_summary], feed_dict={x: test_samples, train_flag: [False], y_: test_labels})
+                    validation_accuracy = sess.run(raw_accuracy, feed_dict={x: test_samples, train_flag: [False], y_: test_labels})
                     total_accuracy += validation_accuracy
 
                 total_accuracy = total_accuracy / FLAGS.num_batches
                 print('step %d, accuracy on validation batch: %g' % (step, total_accuracy))
-                summary_writer_validation.add_summary(summary_str, step)
 
-            # Save the model checkpoint periodically.
-            if step % FLAGS.save_model == 0 or (step + 1) == FLAGS.max_steps:
-                checkpoint_path = FLAGS.log_dir + '/_train' + '/model.ckpt'
-                saver.save(sess, checkpoint_path, global_step=step)
+                # tot_acc_summary = tf.summary.scalar('Total Raw Accuracy', total_accuracy)
+                tot_acc_summary = tf.Summary(value=[
+                    tf.Summary.Value(tag="Total_Raw_Accuracy", simple_value=total_accuracy), 
+                ])
+                # validation_summary = tf.summary.merge([img_summary, tot_acc_summary])
+                summary_writer_validation.add_summary(tot_acc_summary, step)
+
+            # # Save the model checkpoint periodically.
+            # if step % FLAGS.save_model == 0 or (step + 1) == FLAGS.max_steps:
+            #     checkpoint_path = FLAGS.log_dir + '/_train' + '/model.ckpt'
+            #     saver.save(sess, checkpoint_path, global_step=step)
+
+            gztan.shuffle()
 
         # Testing
 
@@ -573,7 +589,7 @@ def main(_):
                     librosa.output.write_wav('incorrect/{d}/track{t}_example{e}.wav'.format(d=FLAGS.net_depth, t=track_id, e=idx), y=sample, sr=22050)
 
                     sample_spec = track_samples[idx]
-                    specshow(sample_spec.reshape([80, 80]), y_axis='mel')
+                    specshow(sample_spec.reshape([80, 80]), y_axis=FLAGS.repr_func)
 
                     pylab.savefig('incorrect/{d}/track{t}_example{e}.png'.format(d=FLAGS.net_depth, t=track_id, e=idx), bbox_inches=None, pad_inches=0)
                     pylab.close()
