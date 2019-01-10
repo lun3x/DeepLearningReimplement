@@ -510,6 +510,7 @@ def main(_):
 
         # Training and validation
         for step in range(FLAGS.max_steps):
+            print('step {}'.format(step))
             # Training: Backpropagation using train set
             total_loss = 0
             for batchNum in range(FLAGS.num_batches):
