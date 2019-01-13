@@ -538,12 +538,17 @@ def main(_):
         raw_pred_acc = []
         done = False
 
-        for class_label in range(FLAGS.num_classes):
-            class_samples = gztan.getClassSamples(class_label)
-            test_av_confidences = sess.run(av_confidence, feed_dict={x: class_samples, train_flag: [False]})
-            print('label {cl}: {}'.format(class_label, test_av_confidences))
+        # for class_label in range(FLAGS.num_classes):
+        #     test_av_confidences = np.zeros(FLAGS.num_classes)
+        #     for batchNum in range(250):
+        #         class_samples = gztan.getClassSamples(class_label, batchNum)
+        #         test_batch_av_confidences = sess.run(av_confidence, feed_dict={x: class_samples, train_flag: [False]})
+        #         test_av_confidences = np.sum([test_av_confidences, test_batch_av_confidences], axis=0)
+        #     test_av_confidences = test_av_confidences / 250
+        #     print('label {cl}: {}'.format(class_label, test_av_confidences))
 
         print('num test tracks: {}'.format(gztan.nTracks))
+        confusion_matrix = np.zeros((FLAGS.num_classes, FLAGS.num_classes), dtype=np.int32)
         for track_id in range(gztan.nTracks):
             (track_samples, track_labels) = gztan.getTrackSamples(track_id)
             track_label = track_labels[0]
@@ -553,6 +558,8 @@ def main(_):
             test_mp_prediction_correct = (test_mp_prediction == np.argmax(track_label))
             test_mv_prediction = sess.run(maj_vote_prediction, feed_dict={x: track_samples, train_flag: [False], label: track_label})
             test_mv_prediction_correct = (test_mv_prediction == np.argmax(track_label))
+            
+            confusion_matrix[int(np.argmax(track_label)), int(test_mp_prediction)] += 1
 
             # print('test_prediction_correct: {}'.format(test_prediction_correct))
             mp_pred_correct.append(test_mp_prediction_correct)
@@ -586,6 +593,8 @@ def main(_):
         print('test set: raw accuracy on test set: %0.3f' % test_raw_accuracy)
         print('test set: max prob accuracy on test set: %0.3f' % test_mp_accuracy)
         print('test set: maj vote accuracy on test set: %0.3f' % test_mv_accuracy)
+
+        np.savetxt("confusion.csv", confusion_matrix, delimiter=",")
 
 if __name__ == '__main__':
     tf.app.run(main=main)
