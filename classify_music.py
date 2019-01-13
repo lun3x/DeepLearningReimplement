@@ -480,6 +480,8 @@ def main(_):
     maj_vote_prediction = tf.argmax(vote_count)
     maj_vote_prediction_correct = tf.cast(tf.equal(maj_vote_prediction, tf.argmax(label)), tf.int32)
 
+    av_confidence = tf.reduce_mean(y_conv, 0)
+
     # saver for checkpoints
     saver = tf.train.Saver(tf.global_variables(), max_to_keep=1)
 
@@ -536,6 +538,11 @@ def main(_):
         raw_pred_acc = []
         done = False
 
+        for class_label in range(FLAGS.num_classes):
+            class_samples = gztan.getClassSamples(class_label)
+            test_av_confidences = sess.run(av_confidence, feed_dict={x: class_samples, train_flag: [False]})
+            print('label {cl}: {}'.format(class_label, test_av_confidences))
+
         print('num test tracks: {}'.format(gztan.nTracks))
         for track_id in range(gztan.nTracks):
             (track_samples, track_labels) = gztan.getTrackSamples(track_id)
@@ -576,9 +583,9 @@ def main(_):
         test_mp_accuracy = sum(mp_pred_correct) / len(mp_pred_correct)
         test_mv_accuracy = sum(mv_pred_correct) / len(mv_pred_correct)
         test_raw_accuracy = sum(raw_pred_acc) / len(raw_pred_acc)
+        print('test set: raw accuracy on test set: %0.3f' % test_raw_accuracy)
         print('test set: max prob accuracy on test set: %0.3f' % test_mp_accuracy)
         print('test set: maj vote accuracy on test set: %0.3f' % test_mv_accuracy)
-        print('test set: raw accuracy on test set: %0.3f' % test_raw_accuracy)
 
 if __name__ == '__main__':
     tf.app.run(main=main)

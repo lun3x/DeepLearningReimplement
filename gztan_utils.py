@@ -156,6 +156,15 @@ class GZTan2:
         librosa.output.write_wav('incorrect_track{t}_sample{e}.wav'.format(t=track_id, e=sample_id), y=sample, sr=22050)
         return D
 
+    def getClassSamples(self, class_label):
+        classIndices = np.where(self.testLabels == class_label)[0]
+        # print('shape of track indices: {}'.format(trackIndices.shape))
+        D = self.testData[classIndices]
+        # D = [self.representationFunc(s) for s in D]
+        # D = np.apply_along_axis(self.representationFunc, axis=1, arr=D)
+        # labels = self.testLabels[classIndices]
+        return D
+
     def getTrackSamples(self, track_id):
         trackIndices = np.where(self.testTracks == track_id)[0]
         # print('shape of track indices: {}'.format(trackIndices.shape))
