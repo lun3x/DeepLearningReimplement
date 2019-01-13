@@ -8,26 +8,29 @@ import hashlib
 import sys
 import librosa
 
-import pickle
+import cPickle
 
 import numpy as np
 
 def melspectrogram(audio):
     spec = librosa.stft(audio, n_fft=512, window='hann', hop_length=256, win_length=512, pad_mode='constant')
+    # print('Mel Spec shape: {}'.format(spec.shape))
     mel_basis = librosa.filters.mel(sr=22050, n_fft=512, n_mels=80)
+    # print('Mel basis shape: {}'.format(mel_basis.shape))
     mel_spec = np.dot(mel_basis, np.abs(spec))
     return np.log(mel_spec + 1e-6).reshape([80, 80, 1])
 
-def cqt(audio, p=False):
+def cqt(audio):
+    # spec = librosa.stft(audio, n_fft=512, window='hann', hop_length=128, win_length=512, pad_mode='constant')
+    # print('CQT Spec shape: {}'.format(spec.shape))
+    # cqt_basis = librosa.filters.constant_q(sr=22050, n_bins=80, filter_scale=0.0625)[0]
+    # print('CQT basis shape: {}'.format(cqt_basis.shape))
+    # cqt_spec = np.dot(cqt_basis, np.abs(spec))
+
     cqt = librosa.core.cqt(audio, sr=22050, hop_length=256, n_bins=80, pad_mode='constant')
-    cqt_abs = np.abs(cqt)
-    # spec = librosa.stft(audio, n_fft=512, window='hann', hop_length=256, win_length=512, pad_mode='constant')
-    # cqt_basis = librosa.filters.constant_q(sr=22050, n_bins=80)
-    # cqt_spec = np.dat(cqt_basis, np.abs(spec))
-    # np.log(cqt_spec + 1e-6).reshape([80, 80, 1])
-    if p:
-        print('cqt at 0, 0: {}'.format(cqt_abs[0, 0]))
-    return np.log(cqt_abs + 1e-6).reshape([80, 80, 1])
+    cqt_spec = np.abs(cqt)
+
+    return np.log(cqt_spec + 1e-6).reshape([80, 80, 1])
 
 def oneHotVector(classIdx, numClasses):
     v = np.zeros((len(classIdx), numClasses), dtype=np.int)
@@ -44,6 +47,7 @@ class GZTan2:
     trainData = np.array([])
     trainLabels = np.array([])
     testData = np.array([])
+    testDataOriginal = np.array([])
     testLabels = np.array([])
     testTracks = np.array([])
     nTrainSamples = 0
@@ -83,14 +87,15 @@ class GZTan2:
 
     def loadGZTan(self):
         with open('music_genres_dataset.pkl', 'rb') as f:
-            train_set = pickle.load(f)
-            test_set = pickle.load(f)
+            train_set = cPickle.load(f)
+            test_set = cPickle.load(f)
 
-        self.trainData = np.array(train_set['data'])
+        train_data = np.array(train_set['data'])
         self.trainLabels = oneHotVector(train_set['labels'], 10)
 
-        self.testData = np.array(test_set['data'])
+        self.testDataOriginal = np.array(test_set['data'])
         self.testLabels = oneHotVector(test_set['labels'], 10)
+
         self.testTracks = np.array(test_set['track_id'])
         self.trainTracks = np.array(train_set['track_id'])
 
@@ -105,14 +110,14 @@ class GZTan2:
         self.pTrain = np.random.permutation(self.nTrainSamples)
         self.pTest = np.random.permutation(self.nTestSamples)
 
-        cqt(self.testData[0][:], p=True)
+        self.trainData = np.apply_along_axis(self.representationFunc, axis=-1, arr=train_data)
+        self.testData = np.apply_along_axis(self.representationFunc, axis=-1, arr=self.testDataOriginal)
+
+        # melspectrogram(self.testData[0])
+        # cqt(self.testData[0])
 
         print('testBatchSize: {}, trainBatchSize: {}'.format(self.testBatchSize, self.trainBatchSize))
         print('trainData length: {}, testData length: {}'.format(len(self.trainData), len(self.testData)))
-
-        # print('shape of test tracks {}'.format(self.testTracks.shape))
-        trackIndices = np.where(self.testTracks == 0)
-        print('length of tuple: {}, shape of track indices[0]: {}'.format(len(trackIndices), trackIndices[0].shape))
 
     def getTrainBatch(self, batchNum):
         return self._getBatch2('train', batchNum)
@@ -139,22 +144,23 @@ class GZTan2:
 
             (d, l) = (self.testData[self.pTest[r]][:], self.testLabels[self.pTest[r]][:])
 
-        d = [self.representationFunc(s) for s in d]
+        # d = [self.representationFunc(s) for s in d]
         # d = np.apply_along_axis(self.representationFunc, axis=-1, arr=d)
 
         return (d, l)
 
-    def getOriginalSample(self, track_id, sample_id):
+    def outputSample(self, track_id, sample_id):
         trackIndices = np.where(self.testTracks == track_id)[0]
-        D = self.testData[trackIndices]
-        D = D[sample_id]
+        D = self.testDataOriginal[trackIndices]
+        sample = np.array(D[sample_id])
+        librosa.output.write_wav('incorrect_track{t}_sample{e}.wav'.format(t=track_id, e=sample_id), y=sample, sr=22050)
         return D
 
     def getTrackSamples(self, track_id):
         trackIndices = np.where(self.testTracks == track_id)[0]
         # print('shape of track indices: {}'.format(trackIndices.shape))
         D = self.testData[trackIndices]
-        D = [self.representationFunc(s) for s in D]
+        # D = [self.representationFunc(s) for s in D]
         # D = np.apply_along_axis(self.representationFunc, axis=1, arr=D)
         labels = self.testLabels[trackIndices]
         return D, labels

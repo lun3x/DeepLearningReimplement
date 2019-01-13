@@ -55,7 +55,7 @@ tf.app.flags.DEFINE_float('learning-rate', 5e-5, 'Learning rate (default: %(defa
 tf.app.flags.DEFINE_integer('img-width', 80, 'Image width (default: %(default)d)')
 tf.app.flags.DEFINE_integer('img-height', 80, 'Image height (default: %(default)d)')
 tf.app.flags.DEFINE_integer('num-classes', 10, 'Number of classes (default: %(default)d)')
-tf.app.flags.DEFINE_string('log-dir', '{cwd}/{d}_{rep}_{decay}_{steps}/logs/'.format(cwd=os.getcwd(), d=FLAGS.net_depth, rep=FLAGS.repr_func, decay=FLAGS.decay, steps=str(FLAGS.max_steps)),
+tf.app.flags.DEFINE_string('log-dir', '{cwd}/{d}_{rep}_{decay}_{lr}_{steps}/logs/'.format(cwd=os.getcwd(), d=FLAGS.net_depth, rep=FLAGS.repr_func, decay=FLAGS.decay, steps=str(FLAGS.max_steps), lr=str(FLAGS.learning_rate)),
                            'Directory where to write event logs and checkpoint. (default: %(default)s)')
 
 
@@ -430,7 +430,7 @@ def main(_):
     # Import data
     gztan = GZTan2(FLAGS.num_batches, mel=(FLAGS.repr_func == 'mel'))
 
-    print('num train tracks: {}'.format(gztan.nTrainTracks))
+    # print('num train tracks: {}'.format(gztan.nTrainTracks))
 
     with tf.variable_scope('inputs'):
         # Create the model
@@ -464,7 +464,7 @@ def main(_):
         optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(regularized_cross_entropy)
     else:
         batch_number = tf.Variable(0, trainable=False)
-        our_learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, batch_number, 10, 0.9)
+        our_learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, batch_number, 3000, 0.9)
         optimizer = tf.train.AdamOptimizer(our_learning_rate).minimize(regularized_cross_entropy, global_step=batch_number)
         
     # calculate the prediction and the accuracy
@@ -552,7 +552,7 @@ def main(_):
             mv_pred_correct.append(test_mv_prediction_correct)
             raw_pred_acc.append(test_raw_acc)
 
-            if not test_mv_prediction_correct and not test_mp_prediction_correct and not done:
+            if test_mv_prediction_correct and not test_mp_prediction_correct and not done:
                 test_raw_confidences = sess.run(y_conv, feed_dict={x: track_samples, train_flag: [False]})
                 test_raw_predictions = np.argmax(test_raw_confidences, axis=1)
 
@@ -563,13 +563,14 @@ def main(_):
                 print('found at track_id: {}!'.format(track_id))
                 for idx in incorrect_pred_idxs:
                     print('Incorrectly classified sample {} with as {} with confidences {}. Should be {}.'.format(idx, test_raw_predictions[idx], test_raw_confidences[idx], np.argmax(track_label)))
-                    sample = np.array(gztan.getOriginalSample(track_id, idx))
-                    librosa.output.write_wav('incorrect/{d}/track{t}_example{e}.wav'.format(d=FLAGS.net_depth, t=track_id, e=idx), y=sample, sr=22050)
-
+                    # sample = np.array(gztan.getOriginalSample(track_id, idx))
+                    # librosa.output.write_wav('incorrect/{d}/track{t}_example{e}.wav'.format(d=FLAGS.net_depth, t=track_id, e=idx), y=sample, sr=22050)
+                    gztan.outputSample(track_id, idx)
+                    
                     sample_spec = track_samples[idx]
                     specshow(sample_spec.reshape([80, 80]), y_axis=FLAGS.repr_func)
 
-                    pylab.savefig('incorrect/{d}/track{t}_example{e}.png'.format(d=FLAGS.net_depth, t=track_id, e=idx), bbox_inches=None, pad_inches=0)
+                    pylab.savefig('incorrect_{r}_track{t}_example{e}.png'.format(r=FLAGS.repr_func, t=track_id, e=idx), bbox_inches=None, pad_inches=0)
                     pylab.close()
         
         test_mp_accuracy = sum(mp_pred_correct) / len(mp_pred_correct)
