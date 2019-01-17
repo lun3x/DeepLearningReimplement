@@ -29,7 +29,7 @@ matplotlib.use('Agg') # No pictures displayed
 import pylab
 
 # from utils import GZTan
-from gztan_utils import GZTan2
+from gztan_utils import GZTan
 
 FLAGS = tf.app.flags.FLAGS
 
