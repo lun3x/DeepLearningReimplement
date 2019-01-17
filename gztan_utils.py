@@ -21,12 +21,6 @@ def melspectrogram(audio):
     return np.log(mel_spec + 1e-6).reshape([80, 80, 1])
 
 def cqt(audio):
-    # spec = librosa.stft(audio, n_fft=512, window='hann', hop_length=128, win_length=512, pad_mode='constant')
-    # print('CQT Spec shape: {}'.format(spec.shape))
-    # cqt_basis = librosa.filters.constant_q(sr=22050, n_bins=80, filter_scale=0.0625)[0]
-    # print('CQT basis shape: {}'.format(cqt_basis.shape))
-    # cqt_spec = np.dot(cqt_basis, np.abs(spec))
-
     cqt = librosa.core.cqt(audio, sr=22050, hop_length=256, n_bins=80, pad_mode='constant')
     cqt_spec = np.abs(cqt)
 
@@ -66,25 +60,6 @@ class GZTan2:
 
         self.loadGZTan()
 
-    def preprocess(self):
-        """
-        Convert pixel values to lie within [0, 1]
-        """
-        self.trainData = self._normaliseImages(self.trainData.astype(np.float32, copy=False))
-        self.testData = self._normaliseImages(self.testData.astype(np.float32, copy=False))
-
-    def _normaliseImages(self, imgs_flat):
-        min = np.min(imgs_flat)
-        max = np.max(imgs_flat)
-        range = max - min
-        return (imgs_flat - min) / range
-
-    def _unflatten(self, imgs_flat):
-        return imgs_flat.reshape(-1, self.IMG_WIDTH, self.IMG_HEIGHT)
-
-    def _flatten(self, imgs):
-        return imgs.reshape(-1, self.IMG_WIDTH * self.IMG_HEIGHT)
-
     def loadGZTan(self):
         with open('music_genres_dataset.pkl', 'rb') as f:
             train_set = cPickle.load(f)
@@ -113,19 +88,16 @@ class GZTan2:
         self.trainData = np.apply_along_axis(self.representationFunc, axis=-1, arr=train_data)
         self.testData = np.apply_along_axis(self.representationFunc, axis=-1, arr=self.testDataOriginal)
 
-        # melspectrogram(self.testData[0])
-        # cqt(self.testData[0])
-
         print('testBatchSize: {}, trainBatchSize: {}'.format(self.testBatchSize, self.trainBatchSize))
         print('trainData length: {}, testData length: {}'.format(len(self.trainData), len(self.testData)))
 
     def getTrainBatch(self, batchNum):
-        return self._getBatch2('train', batchNum)
+        return self._getBatch('train', batchNum)
 
     def getTestBatch(self, batchNum):
-        return self._getBatch2('test', batchNum)
+        return self._getBatch('test', batchNum)
 
-    def _getBatch2(self, dataSet, batchNum):
+    def _getBatch(self, dataSet, batchNum):
         if dataSet == 'train':
             start_idx = batchNum * self.trainBatchSize
             end_idx = (batchNum + 1) * self.trainBatchSize
@@ -143,9 +115,6 @@ class GZTan2:
             r = range(start_idx, end_idx)
 
             (d, l) = (self.testData[self.pTest[r]][:], self.testLabels[self.pTest[r]][:])
-
-        # d = [self.representationFunc(s) for s in d]
-        # d = np.apply_along_axis(self.representationFunc, axis=-1, arr=d)
 
         return (d, l)
 
@@ -172,8 +141,6 @@ class GZTan2:
         trackIndices = np.where(self.testTracks == track_id)[0]
         # print('shape of track indices: {}'.format(trackIndices.shape))
         D = self.testData[trackIndices]
-        # D = [self.representationFunc(s) for s in D]
-        # D = np.apply_along_axis(self.representationFunc, axis=1, arr=D)
         labels = self.testLabels[trackIndices]
         return D, labels
 
