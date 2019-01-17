@@ -31,7 +31,7 @@ def oneHotVector(classIdx, numClasses):
     v[np.arange(0, len(v)), classIdx] = 1
     return v
 
-class GZTan2:
+class GZTan:
     IMG_WIDTH = 80
     IMG_HEIGHT = 80
     CLASS_COUNT = 10

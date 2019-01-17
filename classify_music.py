@@ -367,7 +367,7 @@ def main(_):
     tf.reset_default_graph()
 
     # Import data
-    gztan = GZTan2(FLAGS.num_batches, mel=(FLAGS.repr_func == 'mel'))
+    gztan = GZTan(FLAGS.num_batches, mel=(FLAGS.repr_func == 'mel'))
 
     # print('num train tracks: {}'.format(gztan.nTrainTracks))
 
