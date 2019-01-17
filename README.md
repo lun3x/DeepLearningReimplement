@@ -3,8 +3,17 @@
 ## Dataset
 The dataset should be placed in the same directory and named 'music_genres_dataset.pkl'.
 
+## BlueCrystal Imports
+Ensure numpy and tensorflow are on the correct versions.
+'''
+module load languages/anaconda2/5.0.1
+module add libs/tensorflow/1.2
+'''
+
 ## Running
-./classify_music.py [FLAG OPTIONS]
+'''
+python classify_music.py [FLAG OPTIONS]
+'''
 
 | Flag            | Options         | Meaning |
 | ----------------|-----------------|------------------------------------------------|
