@@ -26,7 +26,7 @@ def cqt(audio):
 
     return np.log(cqt_spec + 1e-6).reshape([80, 80, 1])
 
-def oneHotVector(classIdx, numClasses):
+def binariseVector(classIdx, numClasses):
     v = np.zeros((len(classIdx), numClasses), dtype=np.int)
     v[np.arange(0, len(v)), classIdx] = 1
     return v
@@ -66,10 +66,10 @@ class GZTan:
             test_set = cPickle.load(f)
 
         train_data = np.array(train_set['data'])
-        self.trainLabels = oneHotVector(train_set['labels'], 10)
+        self.trainLabels = binariseVector(train_set['labels'], 10)
 
         self.testDataOriginal = np.array(test_set['data'])
-        self.testLabels = oneHotVector(test_set['labels'], 10)
+        self.testLabels = binariseVector(test_set['labels'], 10)
 
         self.testTracks = np.array(test_set['track_id'])
         self.trainTracks = np.array(train_set['track_id'])
