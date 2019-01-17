@@ -58,32 +58,23 @@ tf.app.flags.DEFINE_integer('num-classes', 10, 'Number of classes (default: %(de
 tf.app.flags.DEFINE_string('log-dir', '{cwd}/{d}_{rep}_{decay}_{lr}_{steps}/logs/'.format(cwd=os.getcwd(), d=FLAGS.net_depth, rep=FLAGS.repr_func, decay=FLAGS.decay, steps=str(FLAGS.max_steps), lr=str(FLAGS.learning_rate)),
                            'Directory where to write event logs and checkpoint. (default: %(default)s)')
 
-
-# run_log_dir = os.path.join(FLAGS.log_dir,
-#                            'genre_classify')
-
 # the initialiser object implementing Xavier initialisation
 # we will generate weights from the uniform distribution
 xavier_initializer = tf.contrib.layers.xavier_initializer(uniform=True)
 
 def shallownn(x, train_flag):
-    """shallownn builds the graph for a deep net for classifying CIFAR10 images.
+    """shallownn builds the graph for a shallow net for classifying GZTAN audio samples.
 
   Args:
-      x: an input tensor with the dimensions (N_examples, 3072), where 3072 is the
-        number of pixels in a standard CIFAR10 image.
+      x: an input tensor with the dimensions (N_examples, 80, 80, 1), where 80x80 is the
+        number of pixels in a spectrogram of a GZTAN audio sample.
+      train_flag: a length 1 tensor containing a boolean flag, True if training, False if testing
 
   Returns:
       y: is a tensor of shape (N_examples, 10), with values
-        equal to the logits of classifying the object images into one of 10 classes
-        (airplane, automobile, bird, cat, deer, dog, frog, horse, ship, truck)
-      img_summary: a string tensor containing sampled input images.
+        equal to the logits of classifying the audio spectrograms into one of 10 classes
+        (blues, classical, country, disco, hiphop, jazz, metal, pop, reggae, rock)
     """
-    # Reshape to use within a convolutional neural net.  Last dimension is for
-    # 'features' - it would be 1 one for a grayscale image, 3 for an RGB image,
-    # 4 for RGBA, etc.
-
-    #-1 is used here to infer the shape. We might not know how many N_examples are passed in as x
 
     # First convolutional layer - maps one image to 16 feature maps.
     with tf.variable_scope('Conv_Spectral_1'):
@@ -97,11 +88,8 @@ def shallownn(x, train_flag):
             name='conv_spec_1'
         )
 
-        # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
-        # conv_spec_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_spec_1, name='conv_spec_1_bn', training=train_flag[0]))
         h_conv_spec_1 = tf.nn.relu(conv_spec_1, name='conv_spec_1_relu')
 
-        # Pooling layer - downsamples by 2X.
         pool_spec_1 = tf.layers.max_pooling2d(
             inputs=h_conv_spec_1,
             pool_size=[1, 20],
@@ -109,7 +97,6 @@ def shallownn(x, train_flag):
             name='pool_spec_1'
         )
 
-        # MAYBE RESHAPE???
         reshaped_pool_spec_1 = tf.reshape(pool_spec_1, [-1, 5120])
 
     with tf.variable_scope('Conv_Temporal_1'):
@@ -123,11 +110,8 @@ def shallownn(x, train_flag):
             name='conv_spec_1'
         )
 
-        # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
-        # conv_temp_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_temp_1, name='conv_temp_1_bn', training=train_flag[0]))
         h_conv_temp_1 = tf.nn.relu(conv_temp_1, name='conv_temp_1_relu')
 
-        # Pooling layer - downsamples by 2X.
         pool_temp_1 = tf.layers.max_pooling2d(
             inputs=h_conv_temp_1,
             pool_size=[20, 1],
@@ -135,11 +119,10 @@ def shallownn(x, train_flag):
             name='pool_temp_1'
         )
 
-        # MAYBE RESHAPE???
         reshaped_pool_temp_1 = tf.reshape(pool_temp_1, [-1, 5120])
 
     with tf.variable_scope('Merge'):
-        merged_streams = tf.concat([reshaped_pool_spec_1, reshaped_pool_temp_1], 1, name='merged_streams') # maybe 0?
+        merged_streams = tf.concat([reshaped_pool_spec_1, reshaped_pool_temp_1], 1, name='merged_streams')
 
         merged_dropout = tf.layers.dropout(
             merged_streams,
@@ -156,8 +139,6 @@ def shallownn(x, train_flag):
             name='fc1'
         )
 
-        # h_fc1 = tf.nn.relu(fc1, name='fc1_relu')
-
     with tf.variable_scope('FC_3'):
         fc3 = tf.layers.dense(
             inputs=fc1,
@@ -168,17 +149,17 @@ def shallownn(x, train_flag):
         return fc3
 
 def deepnn(x, train_flag):
-    """deepnn builds the graph for a deep net for classifying CIFAR10 images.
+    """shallownn builds the graph for a shallow net for classifying GZTAN audio samples.
 
   Args:
-      x: an input tensor with the dimensions (N_examples, 3072), where 3072 is the
-        number of pixels in a standard CIFAR10 image.
+      x: an input tensor with the dimensions (N_examples, 80, 80, 1), where 80x80 is the
+        number of pixels in a spectrogram of a GZTAN audio sample.
+      train_flag: a length 1 tensor containing a boolean flag, True if training, False if testing
 
   Returns:
       y: is a tensor of shape (N_examples, 10), with values
-        equal to the logits of classifying the object images into one of 10 classes
-        (airplane, automobile, bird, cat, deer, dog, frog, horse, ship, truck)
-      img_summary: a string tensor containing sampled input images.
+        equal to the logits of classifying the audio spectrograms into one of 10 classes
+        (blues, classical, country, disco, hiphop, jazz, metal, pop, reggae, rock)
     """
 
     # First convolutional layer - maps one image to 16 feature maps.
@@ -193,8 +174,6 @@ def deepnn(x, train_flag):
             name='conv_spec_1'
         )
 
-        # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
-        # conv_spec_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_spec_1, name='conv_spec_1_bn', training=train_flag[0]))
         h_conv_spec_1 = tf.nn.relu(conv_spec_1, name='conv_spec_1_relu')
 
         # Pooling layer - downsamples by 2X.
@@ -204,9 +183,6 @@ def deepnn(x, train_flag):
             strides=[2, 2],
             name='pool_spec_1'
         )
-
-        # MAYBE RESHAPE???
-        # reshaped_pool_spec_1 = tf.reshape(pool_spec_1, [-1, 5120])
 
     with tf.variable_scope('Conv_Spectral_2'):
         conv_spec_2 = tf.layers.conv2d(
@@ -219,8 +195,6 @@ def deepnn(x, train_flag):
             name='conv_spec_2'
         )
 
-        # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
-        # conv_spec_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_spec_1, name='conv_spec_1_bn', training=train_flag[0]))
         h_conv_spec_2 = tf.nn.relu(conv_spec_2, name='conv_spec_2_relu')
 
         # Pooling layer - downsamples by 2X.
@@ -230,9 +204,6 @@ def deepnn(x, train_flag):
             strides=[2, 2],
             name='pool_spec_2'
         )
-
-        # MAYBE RESHAPE???
-        # reshaped_pool_spec_1 = tf.reshape(pool_spec_1, [-1, 5120])
 
     with tf.variable_scope('Conv_Spectral_3'):
         conv_spec_3 = tf.layers.conv2d(
@@ -245,8 +216,6 @@ def deepnn(x, train_flag):
             name='conv_spec_3'
         )
 
-        # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
-        # conv_spec_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_spec_1, name='conv_spec_1_bn', training=train_flag[0]))
         h_conv_spec_3 = tf.nn.relu(conv_spec_3, name='conv_spec_3_relu')
 
         # Pooling layer - downsamples by 2X.
@@ -256,9 +225,6 @@ def deepnn(x, train_flag):
             strides=[2, 2],
             name='pool_spec_3'
         )
-
-        # MAYBE RESHAPE???
-        # reshaped_pool_spec_1 = tf.reshape(pool_spec_1, [-1, 5120])
 
     with tf.variable_scope('Conv_Spectral_4'):
         conv_spec_4 = tf.layers.conv2d(
@@ -271,11 +237,8 @@ def deepnn(x, train_flag):
             name='conv_spec_4'
         )
 
-        # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
-        # conv_spec_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_spec_1, name='conv_spec_1_bn', training=train_flag[0]))
         h_conv_spec_4 = tf.nn.relu(conv_spec_4, name='conv_spec_4_relu')
 
-        # Pooling layer - downsamples by 2X.
         pool_spec_4 = tf.layers.max_pooling2d(
             inputs=h_conv_spec_4,
             pool_size=[1, 5],
@@ -283,7 +246,6 @@ def deepnn(x, train_flag):
             name='pool_spec_4'
         )
 
-        # MAYBE RESHAPE???
         reshaped_pool_spec_4 = tf.reshape(pool_spec_4, [-1, 2560])
 
 
@@ -298,8 +260,6 @@ def deepnn(x, train_flag):
             name='conv_temp_1'
         )
 
-        # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
-        # conv_temp_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_temp_1, name='conv_temp_1_bn', training=train_flag[0]))
         h_conv_temp_1 = tf.nn.relu(conv_temp_1, name='conv_temp_1_relu')
 
         # Pooling layer - downsamples by 2X.
@@ -309,9 +269,6 @@ def deepnn(x, train_flag):
             strides=[2, 2],
             name='pool_temp_1'
         )
-
-        # MAYBE RESHAPE???
-        # reshaped_pool_temp_1 = tf.reshape(pool_temp_1, [-1, 5120])
 
     with tf.variable_scope('Conv_Temporal_2'):
         conv_temp_2 = tf.layers.conv2d(
@@ -324,8 +281,6 @@ def deepnn(x, train_flag):
             name='conv_temp_2'
         )
 
-        # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
-        # conv_temp_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_temp_1, name='conv_temp_1_bn', training=train_flag[0]))
         h_conv_temp_2 = tf.nn.relu(conv_temp_2, name='conv_temp_2_relu')
 
         # Pooling layer - downsamples by 2X.
@@ -335,9 +290,6 @@ def deepnn(x, train_flag):
             strides=[2, 2],
             name='pool_temp_2'
         )
-
-        # MAYBE RESHAPE???
-        # reshaped_pool_temp_1 = tf.reshape(pool_temp_1, [-1, 5120])
 
     with tf.variable_scope('Conv_Temporal_3'):
         conv_temp_3 = tf.layers.conv2d(
@@ -350,8 +302,6 @@ def deepnn(x, train_flag):
             name='conv_temp_3'
         )
 
-        # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
-        # conv_temp_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_temp_1, name='conv_temp_1_bn', training=train_flag[0]))
         h_conv_temp_3 = tf.nn.relu(conv_temp_3, name='conv_temp_3_relu')
 
         # Pooling layer - downsamples by 2X.
@@ -361,9 +311,6 @@ def deepnn(x, train_flag):
             strides=[2, 2],
             name='pool_temp_3'
         )
-
-        # MAYBE RESHAPE???
-        # reshaped_pool_temp_1 = tf.reshape(pool_temp_1, [-1, 5120])
 
     with tf.variable_scope('Conv_Temporal_4'):
         conv_temp_4 = tf.layers.conv2d(
@@ -376,11 +323,8 @@ def deepnn(x, train_flag):
             name='conv_temp_4'
         )
 
-        # MAYBE NEED TO DO PROPER WEIGHTING AND BIAS HERE???
-        # conv_temp_1_bn = tf.nn.relu(tf.layers.batch_normalization(conv_temp_1, name='conv_temp_1_bn', training=train_flag[0]))
         h_conv_temp_4 = tf.nn.relu(conv_temp_4, name='conv_temp_4_relu')
 
-        # Pooling layer - downsamples by 2X.
         pool_temp_4 = tf.layers.max_pooling2d(
             inputs=h_conv_temp_4,
             pool_size=[5, 1],
@@ -388,11 +332,10 @@ def deepnn(x, train_flag):
             name='pool_temp_4'
         )
 
-        # MAYBE RESHAPE???
         reshaped_pool_temp_4 = tf.reshape(pool_temp_4, [-1, 2560])
 
     with tf.variable_scope('Merge'):
-        merged_streams = tf.concat([reshaped_pool_spec_4, reshaped_pool_temp_4], 1, name='merged_streams') # maybe 0?
+        merged_streams = tf.concat([reshaped_pool_spec_4, reshaped_pool_temp_4], 1, name='merged_streams')
 
         merged_dropout = tf.layers.dropout(
             merged_streams,
@@ -419,10 +362,6 @@ def deepnn(x, train_flag):
             name='fc3'
         )
         return fc3
-
-def raw_acc(y_, y_conv):
-    raw_correct_prediction = tf.equal(tf.argmax(y_, 1), tf.argmax(y_conv, 1))
-    return tf.reduce_mean(tf.cast(raw_correct_prediction, tf.float32))
 
 def main(_):
     tf.reset_default_graph()
@@ -451,7 +390,7 @@ def main(_):
         print("Error: Unrecognised depth.")
         return
 
-    # Define your loss function - softmax_cross_entropy
+    # Define loss function - softmax_cross_entropy + L1 regularisation
     with tf.name_scope("regularized_loss"):
         cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv))
         l1_regularizer = tf.contrib.layers.l1_regularizer(scale=0.0001)
@@ -459,7 +398,7 @@ def main(_):
         regularization_penalty = tf.contrib.layers.apply_regularization(l1_regularizer, weights)
         regularized_cross_entropy = tf.add(cross_entropy, regularization_penalty, name='reg_loss')
 
-    # Define your AdamOptimiser, using FLAGS.learning_rate to minimixe the loss function
+    # Define AdamOptimiser, using FLAGS.learning_rate to minimize the loss function
     if FLAGS.decay == 'const':
         optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(regularized_cross_entropy)
     else:
@@ -467,8 +406,7 @@ def main(_):
         our_learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, batch_number, 3000, 0.9)
         optimizer = tf.train.AdamOptimizer(our_learning_rate).minimize(regularized_cross_entropy, global_step=batch_number)
         
-    # calculate the prediction and the accuracy
-    
+    # Calculate the prediction and the accuracy
     raw_prediction = tf.argmax(y_conv, 1)
     raw_prediction_correct = tf.cast(tf.equal(raw_prediction, tf.argmax(y_, 1)), tf.float32)
     raw_accuracy = tf.reduce_mean(raw_prediction_correct)
@@ -493,7 +431,6 @@ def main(_):
 
         # Training and validation
         for step in range(FLAGS.max_steps):
-            print('step {}'.format(step))
             # Training: Backpropagation using train set
             total_loss = 0
             for batchNum in range(FLAGS.num_batches):
@@ -531,21 +468,10 @@ def main(_):
             gztan.shuffle()
 
         # Testing
-
-        # resetting the internal batch indexes
         mp_pred_correct = []
         mv_pred_correct = []
         raw_pred_acc = []
         done = False
-
-        # for class_label in range(FLAGS.num_classes):
-        #     test_av_confidences = np.zeros(FLAGS.num_classes)
-        #     for batchNum in range(250):
-        #         class_samples = gztan.getClassSamples(class_label, batchNum)
-        #         test_batch_av_confidences = sess.run(av_confidence, feed_dict={x: class_samples, train_flag: [False]})
-        #         test_av_confidences = np.sum([test_av_confidences, test_batch_av_confidences], axis=0)
-        #     test_av_confidences = test_av_confidences / 250
-        #     print('label {cl}: {}'.format(class_label, test_av_confidences))
 
         print('num test tracks: {}'.format(gztan.nTracks))
         confusion_matrix = np.zeros((FLAGS.num_classes, FLAGS.num_classes), dtype=np.int32)
@@ -561,24 +487,27 @@ def main(_):
             
             confusion_matrix[int(np.argmax(track_label)), int(test_mp_prediction)] += 1
 
-            # print('test_prediction_correct: {}'.format(test_prediction_correct))
             mp_pred_correct.append(test_mp_prediction_correct)
             mv_pred_correct.append(test_mv_prediction_correct)
             raw_pred_acc.append(test_raw_acc)
 
-            if test_mv_prediction_correct and not test_mp_prediction_correct and not done:
+            # Find interesting examples and output them
+            if not test_mv_prediction_correct and not test_mp_prediction_correct and not done:
                 test_raw_confidences = sess.run(y_conv, feed_dict={x: track_samples, train_flag: [False]})
                 test_raw_predictions = np.argmax(test_raw_confidences, axis=1)
 
-                done = True
+                test_av_conf_vals = np.mean(test_raw_confidences, axis=1)
+                low_correct_confidences = np.where(test_raw_confidences[:,np.argmax(track_label)] < test_av_conf_vals)[0]
+
+                if len(low_correct_confidences) > 0:
+                    done = True
+                    
                 # np.where outputs a 1-tuple so do [0] on this to get actual result
                 print('test_mp_prediction: {} test_mv_prediction: {} true label: {}'.format(test_mp_prediction, test_mv_prediction, np.argmax(track_label)))
                 incorrect_pred_idxs = np.where(test_raw_predictions != np.argmax(track_label))[0]
                 print('found at track_id: {}!'.format(track_id))
-                for idx in incorrect_pred_idxs:
+                for idx in low_correct_confidences:
                     print('Incorrectly classified sample {} with as {} with confidences {}. Should be {}.'.format(idx, test_raw_predictions[idx], test_raw_confidences[idx], np.argmax(track_label)))
-                    # sample = np.array(gztan.getOriginalSample(track_id, idx))
-                    # librosa.output.write_wav('incorrect/{d}/track{t}_example{e}.wav'.format(d=FLAGS.net_depth, t=track_id, e=idx), y=sample, sr=22050)
                     gztan.outputSample(track_id, idx)
                     
                     sample_spec = track_samples[idx]
