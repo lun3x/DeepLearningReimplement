@@ -12,6 +12,12 @@ module load languages/anaconda2/5.0.1
 pip install --user librosa
 ```
 
+## Batch File
+We've provided a batch file to run with sbatch.
+```
+sbatch batch_classify.sh
+```
+
 ## Running
 
 ```
